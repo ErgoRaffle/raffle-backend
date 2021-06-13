@@ -7,8 +7,21 @@ import java.security.MessageDigest
 @Singleton
 class Utils @Inject()() {
 
-  def getAPILink(): String = {
+  def getAPILink(APIName: String): String = {
+//    return ConfigFactory.load().getString(s"API.${APIName}")
     return ConfigFactory.load().getString("API.unspentBoxesAPILink")
+  }
+
+  def getTokenId(): String = {
+    return ConfigFactory.load().getString("Token.raffleCreator")
+  }
+
+  def getBoxCreator(): String = {
+    return ConfigFactory.load().getString("Box.creatorBoxId")
+  }
+
+  def getOracleId(): String = {
+    return ConfigFactory.load().getString("Box.oracleId")
   }
 
   def SHA1(input: String): String = {
