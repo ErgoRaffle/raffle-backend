@@ -131,8 +131,8 @@ class HomeController @Inject()(val controllerComponents: ControllerComponents, u
 
   def createRaffle(name: String, description: String, deadlineHeight: Long, organizerAddr: String, charityAddr: String, minToRaise: Long) = Action {
     try {
-      var transactionId: String
-      var raffleId: String
+      var transactionId: String = ""
+      var raffleId: String = ""
       val client = RestApiErgoClient.create("http://213.239.193.208:9053/swagger", NetworkType.TESTNET, " ")
       client.execute(ctx => {
         val minFee = 1000000
