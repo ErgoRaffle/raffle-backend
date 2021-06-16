@@ -15,5 +15,20 @@ import org.ergoplatform.appkit.impl.ErgoTreeContract
 import special.collection.Coll
 
 
-class Adaptor @Inject()(client: Client, explorer: Explorer, utils: Utils, gatewayContracts: RaffleScript) {
+class Adaptor @Inject()(client: Client, explorer: Explorer, utils: Utils, raffleContract: RaffleContract) {
+  /*
+  * adds a raffle
+  * @param name
+  * @param description
+  * @param deadlineHeight
+  * @param organizerAddr
+  * @param charityAddr
+  * @param minToRaise
+  * @return tracnsactionId, in which new raffle added
+  * */
+  def addRaffle(name: String, description: String, deadlineHeight: Long, organizerAddr: String, charityAddr: String, minToRaise: Long): String = {
+    client.getClient.execute(ctx => {
+
+    }
+  }
 }
