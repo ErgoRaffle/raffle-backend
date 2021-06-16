@@ -7,16 +7,16 @@ import play.api.libs.circe.Circe
 import scalaj.http._
 import io.circe.jawn
 import helpers.Utils
+import network.{Client, Explorer}
 import scorex.crypto.hash._
 import org.ergoplatform.appkit._
 import org.ergoplatform.appkit.Address
 import org.ergoplatform.ErgoAddress
 import org.ergoplatform.appkit.impl.ErgoTreeContract
 
-object client
 
 @Singleton
-class HomeController @Inject()(val controllerComponents: ControllerComponents, utils: Utils) extends BaseController
+class HomeController @Inject()(explorer: Explorer, client: Client, val controllerComponents: ControllerComponents, utils: Utils) extends BaseController
   with Circe {
 
   def index() = Action { implicit request: Request[AnyContent] =>
@@ -100,11 +100,7 @@ class HomeController @Inject()(val controllerComponents: ControllerComponents, u
 
   def getRaffles(offset: Int, limit: Int) = Action {
     try {
-      val response: HttpResponse[String] =
-        Http(utils.getAPILink("unspentBoxesAPILink") + utils.getTokenId() + s"?limit=${limit}&offset=${offset}")
-        .header("Accept", "application/json").asString
-//      val creatorBoxId = utils.getBoxCreator()
-      val boxes = jawn.parse(response.body).getOrElse(throw new Throwable("Not Found"))
+      val boxes = explorer.getUnspentTokenBoxes(utils.getTokenId(), limit, offset)
       val items = boxes.hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("parse error"))
       val result = items.map(m => boxToRaffle(m.hcursor.downField("boxId").as[String].getOrElse(throw new Throwable("BoxId Not Found"))))
         .mkString(", ")
@@ -133,8 +129,8 @@ class HomeController @Inject()(val controllerComponents: ControllerComponents, u
     try {
       var transactionId: String = ""
       var raffleId: String = ""
-      val client = RestApiErgoClient.create("http://213.239.193.208:9053/swagger", NetworkType.TESTNET, " ")
-      client.execute(ctx => {
+      client.setClient()
+      client.getClient.execute(ctx => {
         val minFee = 1000000
         val secret = BigInt("187b05ba1eb459d3e347753e2fb9da0e2fb3211e3e1a896a0665666b6ab5a2a8", 16)
         val prover = ctx.newProverBuilder()
