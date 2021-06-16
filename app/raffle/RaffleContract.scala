@@ -9,11 +9,11 @@ import org.ergoplatform.appkit._
 import scalaj.http.{Http, HttpResponse}
 import scorex.crypto.hash.Digest32
 
-object RaffleScript {
+object RaffleContract {
   lazy val
 }
 
-class RaffleScript @Inject()(client : Client){
+class RaffleContract @Inject()(client : Client){
   val servicePubKey = "9faLY6U5W6RrCHdUJ4wSqctKYik9skpQDVDEETPqaX9uXWkjEva"
   val serviceSecret = BigInt("51377199ca726394197759ebf50bf2d3dc73e464a422720921f734932164bf3e", 16)
   val serviceAddress : Address = Address.create(servicePubKey)
