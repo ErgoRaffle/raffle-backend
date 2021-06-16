@@ -10,7 +10,7 @@ import scalaj.http.{Http, HttpResponse}
 import scorex.crypto.hash.Digest32
 
 object RaffleContract {
-  lazy val
+  lazy val tokenIdService = ""
 }
 
 class RaffleContract @Inject()(client : Client){
@@ -182,6 +182,6 @@ class RaffleContract @Inject()(client : Client){
         .build(),
       ticketScript)
   })
-
+  def
   })
 }

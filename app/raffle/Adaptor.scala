@@ -31,4 +31,6 @@ class Adaptor @Inject()(client: Client, explorer: Explorer, utils: Utils, raffle
 
     }
   }
+
+
 }
