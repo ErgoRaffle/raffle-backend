@@ -15,8 +15,8 @@ object RaffleContract {
 
 class RaffleContract @Inject()(client : Client){
   val servicePubKey = "9faLY6U5W6RrCHdUJ4wSqctKYik9skpQDVDEETPqaX9uXWkjEva"
-  val serviceSecret = BigInt("51377199ca726394197759ebf50bf2d3dc73e464a422720921f734932164bf3e", 16)
-  val serviceAddress : Address = Address.create(servicePubKey)
+//  val serviceSecret = BigInt("51377199ca726394197759ebf50bf2d3dc73e464a422720921f734932164bf3e", 16)
+//  val serviceAddress : Address = Address.create(servicePubKey)
   val raffleProjectPubKey = "9guri1oTv5ZFH6uMgVgDp18jVVsJmTFoS9XvJyRm6n7vKSXouML"
   val raffleProjectSecret = BigInt("4304f047d0e1c447001cb63e40ce59f8ccdd1dfabe925e39b54299a20c83240c", 16)
   val raffleProjectAddress : Address = Address.create(raffleProjectPubKey)
@@ -28,7 +28,7 @@ class RaffleContract @Inject()(client : Client){
   val charityAddress : Address = Address.create(charityPubKey)
 
   val raffleTokenId: String = "298cbf467b7c5fd38fd3dd8cea35d6c3911f6960db6f6a66548f242a41742870"
-  val serviceTokenId: String = "398cbf467b7c5fd38fd3dd8cea35d6c3911f6960db6f6a66548f242a41742870"
+  val serviceTokenId: String = "be5ecd5e083a82b11266e873cdac37c94b2c2cdeed3894ba9f9d16b8a8c879d8"
   val oracleId = "011d3364de07e5a26f0c4eef0852cddb387039a921b7154ef3cab22c6eda887f"
   val response: HttpResponse[String] = Http("https://api.ergoplatform.com/api/v1/boxes/unspent/byTokenId/").header("Accept", "application/json").asString
 
@@ -164,24 +164,22 @@ class RaffleContract @Inject()(client : Client){
        |  servicePubKey
        |}""".stripMargin
 
-  client.getClient.execute(ctx => {
-    val winnerContract = ctx.compileContract(
-      ConstantsBuilder.create()
-        .build(),
-      winnerScript)
-
-    val winnerErgoTree = winnerContract.getErgoTree
-    val winnerScriptHash: Digest32 = scorex.crypto.hash.Blake2b256(winnerErgoTree.bytes)
-
-    val ticketContract = ctx.compileContract(
-      ConstantsBuilder.create()
-        .item("deadlineHeight", 50000000)
-        .item("winnerScriptHash", winnerScriptHash)
-        .item("ticketPrice", 1000000L)
-        .item("projectPubKey", raffleProjectAddress.getPublicKey)
-        .build(),
-      ticketScript)
-  })
-  def
-  })
+//  client.getClient.execute(ctx => {
+//    val winnerContract = ctx.compileContract(
+//      ConstantsBuilder.create()
+//        .build(),
+//      winnerScript)
+//
+//    val winnerErgoTree = winnerContract.getErgoTree
+//    val winnerScriptHash: Digest32 = scorex.crypto.hash.Blake2b256(winnerErgoTree.bytes)
+//
+//    val ticketContract = ctx.compileContract(
+//      ConstantsBuilder.create()
+//        .item("deadlineHeight", 50000000)
+//        .item("winnerScriptHash", winnerScriptHash)
+//        .item("ticketPrice", 1000000L)
+//        .item("projectPubKey", raffleProjectAddress.getPublicKey)
+//        .build(),
+//      ticketScript)
+//  })
 }

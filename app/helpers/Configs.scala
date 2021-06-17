@@ -7,8 +7,10 @@ import org.ergoplatform.appkit.{Address, NetworkType}
 object Configs extends ConfigHelper {
   lazy val nodeUrl: String = readKey("node.url")
   lazy val nodeApiKey: String = readKey("node.apiKey", "")
-  lazy val proxySecret: BigInteger = BigInt(readKey("proxy.secret"), 16).bigInteger
-  lazy val proxyAddress: Address = Address.create(readKey("proxy.address"))
+  lazy val serviceSecret: BigInteger = BigInt(readKey("service.secret"), 16).bigInteger
+  lazy val serviceAddress: Address = Address.create(readKey("service.address"))
+  lazy val raffleProjectAddress: Address = Address.create(readKey("raffle.project.address"))
+  lazy val oracleId: String = readKey("oracleId")
   lazy val networkType: NetworkType = if (readKey("node.networkType").toLowerCase.equals("mainnet")) NetworkType.MAINNET else NetworkType.TESTNET
   lazy val addressEncoder = new ErgoAddressEncoder(networkType.networkPrefix)
 

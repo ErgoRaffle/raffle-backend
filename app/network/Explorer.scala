@@ -54,6 +54,8 @@ class Explorer() {
 
   def getUnspentTokenBoxes(tokenId: String, offset: Int, limit: Int): Json = try {
     GetRequest.httpGet(s"$tx/$unspentBoxesByTokenId/$tokenId?offset=$offset&limit=$limit")
+  } catch {
+    case _: Throwable => Json.Null
   }
 }
 
