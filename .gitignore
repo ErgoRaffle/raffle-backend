@@ -1,5 +1,6 @@
 logs
 target
+public/*
 /.bsp
 /.idea
 /.idea_modules
@@ -7,3 +8,49 @@ target
 /.project
 /.settings
 /RUNNING_PID
+*.toc
+*.aux
+*.log
+*.out
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.gz
+
+*.log
+appkit/docs/spec/out/
+appkit/test-out/
+appkit/flamegraphs/
+# sbt specific
+.cache
+appkit/.lib/
+appkit/dist/*
+appkit/target/
+appkit/lib_managed/
+appkit/src_managed/
+appkit/project/boot/
+appkit/project/plugins/project/
+
+# Scala-IDE specific
+.scala_dependencies
+.worksheet
+
+# IntelliJ Idea 
+appkit/.idea/
+
+# file system
+
+**/.DS_Store
+
+# ergo's checkout location for integration testing
+appkit/ergo-tests/
+
+# spam test's checkout location
+appkit/spam-tests/
+
+# scal metals and bloop 
+appkit/.bloop/
+appkit/.metals/
+appkit/project/metals.sbt
+.vscode

@@ -1,0 +1,17 @@
+{
+  "node": {
+    "nodeApi": {
+      "apiUrl": "http://139.59.29.87:9053",
+      "apiKey": "hello"
+    },
+    "wallet": {
+      "mnemonic": "",
+      "password": "",
+      "mnemonicPassword": ""
+    },
+    "networkType": "MAINNET"
+  },
+  "parameters": {
+    "newBoxSpendingDelay": "30"
+  }
+}
