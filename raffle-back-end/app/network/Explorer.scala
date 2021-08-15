@@ -64,17 +64,22 @@ class Explorer() {
   } catch {
     case _: Throwable => Json.Null
   }
+
+  def getUnconfirmedTxByAddress(address: String): Json = try {
+    GetRequest.httpGet(s"$unconfirmedTx/byAddress/$address")
+  } catch {
+    case _: Throwable => Json.Null
+  }
 }
 
 object GetRequest{
-  object GravityHttp extends BaseHttp (None, HttpConstants.defaultOptions, HttpConstants.utf8, 4096, "Mozilla/5.0 (X11; OpenBSD amd64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.81 Safari/537.36",
+  object RaffleHttp extends BaseHttp (None, HttpConstants.defaultOptions, HttpConstants.utf8, 4096, "Mozilla/5.0 (X11; OpenBSD amd64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.81 Safari/537.36",
     true
   )
   private val defaultHeader: Seq[(String, String)] = Seq[(String, String)](("Accept", "application/json"))
   def httpGetWithError(url: String, headers: Seq[(String, String)] = defaultHeader): Either[Throwable, Json] = {
     Try {
-      val responseReq = GravityHttp(url).headers(defaultHeader).asString
-      println(responseReq.body)
+      val responseReq = RaffleHttp(url).headers(defaultHeader).asString
       (responseReq.code, responseReq)
     }
     match{

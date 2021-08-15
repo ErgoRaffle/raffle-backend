@@ -21,5 +21,19 @@ object Configs extends ConfigHelper {
   lazy val raffleProjectAddress: Address = Address.create(readKey("raffle.project.address"))
   lazy val oracleId: String = readKey("oracleId")
   lazy val servicePercent: Long = readKey("service.percent").toLong
-  print(serviceTokenId)
+
+  lazy val creationDelay: Int = readKey("creationDelay").toInt
+  lazy val checkingDelay: Int = readKey("checkingDelay").toInt
+  lazy val inf: Int = readKey("inf").toInt
+  lazy val creationThreadInterval: Int = readKey("creationThreadInterval").toInt
+  lazy val donateThreadInterval: Int = readKey("donateThreadInterval").toInt
+  lazy val refundThreadInterval: Int = readKey("refundThreadInterval").toInt
+  lazy val raffleThreadInterval: Int = readKey("raffleThreadInterval").toInt
+  lazy val searchThreadInterval: Int = readKey("searchThreadInterval").toInt
+
+  object token {
+    lazy val nft: String = readKey("raffle.token.nft")
+    lazy val service: String = readKey("raffle.token.service")
+    lazy val oracle: String = readKey("raffle.token.oracle")
+  }
 }

@@ -7,15 +7,21 @@ lazy val root = (project in file(".")).enablePlugins(PlayScala)
 
 scalaVersion := "2.12.10"
 
-libraryDependencies ++= Seq(jdbc, ehcache, ws, specs2%Test, guice)
-libraryDependencies += "org.scalatestplus.play" %% "scalatestplus-play" % "5.0.0" % Test
+resolvers ++= Seq("Sonatype Releases" at "https://oss.sonatype.org/content/repositories/releases/",
+  "SonaType" at "https://oss.sonatype.org/content/groups/public",
+  "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots")
+
+libraryDependencies ++= Seq(ehcache, ws, specs2%Test, guice)
 libraryDependencies ++= Seq(
   guice,
-  "org.scalatestplus.play" %% "scalatestplus-play" % "5.0.0" % Test,
   "org.scalaj" %% "scalaj-http" % "2.4.2",
   "com.dripower" %% "play-circe" % "2712.0",
   "org.ergoplatform" %% "ergo-appkit" % "raffle-appkit-local",
-  "org.scorexfoundation" %% "scrypto" % "2.1.10"
+  "org.scorexfoundation" %% "scrypto" % "2.1.10",
+  "com.typesafe.play" %% "play-slick" % "4.0.0",
+  "com.typesafe.play" %% "play-slick-evolutions" % "4.0.0",
+  "com.h2database" % "h2" % "1.4.200",
+  "com.nappin" %% "play-recaptcha" % "2.4"
 )
 
 
