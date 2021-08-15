@@ -25,6 +25,8 @@ object Configs extends ConfigHelper {
   lazy val creationDelay: Int = readKey("creationDelay").toInt
   lazy val checkingDelay: Int = readKey("checkingDelay").toInt
   lazy val inf: Int = readKey("inf").toInt
+  lazy val infBoxVal: Long = readKey("infBoxVal").toLong
+
   lazy val creationThreadInterval: Int = readKey("creationThreadInterval").toInt
   lazy val donateThreadInterval: Int = readKey("donateThreadInterval").toInt
   lazy val refundThreadInterval: Int = readKey("refundThreadInterval").toInt

@@ -8,9 +8,9 @@ case class CreateReq(id: Long, name: String, description: String, goal: Long,
                      chainedWith: Long, isChained: Boolean, timeOut: Long, ttl: Long)
 
 
-case class DonateReq(id: Long, ticketCount: Long, ticketPrice: Long, state: Int, paymentAddress: String,
-                     raffleAddress: String, raffleToken: String, signedDonateTxJson: Option[String],
-                     participantAddress: String, ticketAddress: String, timeOut: Long, ttl: Long)
+case class DonateReq(id: Long, ticketCount: Long, fee: Long, state: Int, paymentAddress: String,
+                     raffleAddress: String, raffleToken: String, donateTxID: Option[String],
+                     participantAddress: String, timeOut: Long, ttl: Long)
 
 
 case class RefundReq(id: Long, ticketCount: Long, ticketPrice: Long, state: Int,

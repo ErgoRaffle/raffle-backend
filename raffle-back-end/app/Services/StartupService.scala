@@ -31,13 +31,13 @@ class StartupService @Inject()(node: Client, system: ActorSystem, createReqHandl
     message = JobsUtil.create
   )
 
-//  system.scheduler.scheduleAtFixedRate(
-//    initialDelay = 2.seconds,
-//    interval = Configs.donateThreadInterval.seconds,
-//    receiver = jobs,
-//    message = JobsUtil.donate
-//  )
-//
+  system.scheduler.scheduleAtFixedRate(
+    initialDelay = 2.seconds,
+    interval = Configs.donateThreadInterval.seconds,
+    receiver = jobs,
+    message = JobsUtil.donate
+  )
+
 //  system.scheduler.scheduleAtFixedRate(
 //    initialDelay = 2.seconds,
 //    interval = Configs.refundThreadInterval.seconds,

@@ -10,19 +10,57 @@ import javax.inject.Inject
 import models.DonateReq
 import network.{Client, Explorer}
 import org.ergoplatform.ErgoAddress
-import org.ergoplatform.appkit.{Address, ConstantsBuilder, ErgoId, ErgoToken, ErgoValue, InputBox}
+import org.ergoplatform.appkit.{Address, BlockchainContext, ConstantsBuilder, ErgoId, ErgoToken, ErgoValue, InputBox}
 import org.ergoplatform.appkit.impl.ErgoTreeContract
 import scorex.crypto.hash.Digest32
-import special.collection.Coll
+import special.collection.{Coll, CollOverArray}
+import ContractTypeEnum._
+import play.api.Logger
 
 import scala.collection.mutable.Seq
 import scala.collection.JavaConverters._
+import scala.util.Try
 
 class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, raffleContract: RaffleContract,
-                               donateReqDAO: DonateReqDAO){
+                               donateReqDAO: DonateReqDAO, addresses: Addresses){
+  private val logger: Logger = Logger(this.getClass)
 
+  def findRaffleBox(tokenId: String): InputBox ={
+    client.getClient.execute((ctx: BlockchainContext) => {
+      var raffleBoxId: String = ""
+      while(raffleBoxId == ""){
+        val raffleBoxJson = explorer.getUnspentTokenBoxes(Configs.token.service, 0, 10)
+        raffleBoxId = raffleBoxJson.hcursor.downField("items").as[List[Json]].getOrElse(null)
+          .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).size > 1)
+          .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null)(1)
+            .hcursor.downField("tokenId").as[String].getOrElse("") == tokenId).head
+          .hcursor.downField("boxId").as[String].getOrElse("")
+      }
 
-  def findProxyAddress(pk: String, raffleId: String, ticketCounts: Long): String = {
+      var raffleBox = ctx.getBoxesById(raffleBoxId).head
+      val serviceAddress = Configs.addressEncoder.fromProposition(raffleBox.getErgoTree).get.toString
+      val mempool = explorer.getAddressMempoolTransactions(serviceAddress)
+      try {
+        val txs = mempool.hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request"))
+        var txMap: Map[String, Json] = Map()
+        txs.foreach(txJson => {
+          val txServiceInput = txJson.hcursor.downField("inputs").as[List[Json]].getOrElse(throw new Throwable("bad response from explorer")).head
+          val id = txServiceInput.hcursor.downField("boxId").as[String].getOrElse("")
+          txMap += (id -> txJson)
+        })
+        val keys = txMap.keys.toSeq
+        while (keys.contains(raffleBox.getId.toString)) {
+          val tmpTx = ctx.signedTxFromJson(txMap(raffleBox.getId.toString).toString())
+          raffleBox = tmpTx.getOutputsToSpend.get(0)
+        }
+      } catch {
+        case e: Throwable => logger.error(e.toString)
+      }
+      raffleBox
+    })
+  }
+
+  def findProxyAddress(pk: String, raffleId: String, ticketCounts: Long): (String, Long) = {
     client.getClient.execute(ctx => {
 
       val propByte = new ErgoTreeContract(Address.create(pk).getErgoAddress.script)
@@ -35,183 +73,119 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         raffleContract.donateScript)
       val feeEmissionAddress: ErgoAddress = Configs.addressEncoder.fromProposition(donateContract.getErgoTree).get
 
-      val boxes = explorer.getUnspentTokenBoxes(raffleId, 0, 100).hcursor.downField("items").as[Array[Json]]
-        .getOrElse(throw new Throwable("parse error"))
+      val raffleBox = findRaffleBox(raffleId)
 
-      // TODO: Write it better with map and filter
-      var raffleBox : Json = null
-      for (box <- boxes){
-        try {
-          val asset = box.hcursor.downField("assets").as[Seq[Json]].getOrElse(null)(1)
-          if (asset.hcursor.get[String]("tokenId").getOrElse("") == Configs.serviceTokenId) raffleBox = box
-        } catch {
-          case e: Throwable => println(e)
-        }
-      }
+      logger.debug("Donate payment address created")
+      val r4 = raffleBox.getRegisters.get(0).getValue.asInstanceOf[CollOverArray[Long]].toArray.clone()
+      val ticketPrice = r4(2)
+      val fee = (ticketPrice * ticketCounts) + (Configs.fee * 2)
 
-      val address = raffleBox.hcursor.get[String]("address").getOrElse("")
-      println("Donate patment address created")
-      // TODO: Edit it after changing raffle scripts
-      // val ticketPrice =
       val currentTime = Calendar.getInstance().getTimeInMillis / 1000
-      donateReqDAO.insert(ticketCounts, 10000000, 0, feeEmissionAddress.toString, address, raffleId,
-        null, pk, "not-imp", currentTime + Configs.inf, currentTime + Configs.creationDelay)
-      return feeEmissionAddress.toString
+      donateReqDAO.insert(ticketCounts, fee, 0, feeEmissionAddress.toString, "nothing", raffleId,
+        null, pk, currentTime + Configs.inf, currentTime + Configs.creationDelay)
+
+      return (feeEmissionAddress.toString, fee)
     })
   }
 
   def createDonateTx(req: DonateReq): Unit = {
     client.getClient.execute(ctx => {
+      val raffleBox = findRaffleBox(req.raffleToken)
+      val r4 = raffleBox.getRegisters.get(0).getValue.asInstanceOf[CollOverArray[Long]].toArray.clone()
+      val ticketPrice: Long = r4(2)
 
-      // TODO: Change this to chain the donation transactions
-      val boxes = ctx.getUnspentBoxesFor(Address.create(req.raffleAddress), 0, 100)
-      val raffleBox: InputBox = boxes.asScala.filter(box => box.getTokens.get(1).getId.toString == Configs.serviceTokenId)
-        .filter(box => box.getTokens.get(0).getId.toString == req.raffleToken).head
-
-      val paymentBoxList = ctx.getUnspentBoxesFor(Address.create(req.paymentAddress), 0, 100)
-      if (paymentBoxList.size() == 0) return
-      var proxyBox: InputBox = null
-      for (i <- 0 until paymentBoxList.size()) {
-        if (paymentBoxList.get(i).getValue >= req.ticketPrice * req.ticketCount) {
-          proxyBox = paymentBoxList.get(i)
-        }
-      }
-
-      val prover = ctx.newProverBuilder()
-        .withDLogSecret(Configs.serviceSecret)
-        .build()
+      val paymentBoxList = ctx.getCoveringBoxesFor(Address.create(req.paymentAddress), req.fee)
+      logger.debug(paymentBoxList.getCoveredAmount.toString +" "+ paymentBoxList.isCovered.toString)
+      if(!paymentBoxList.isCovered) return
 
       val txB = ctx.newTxBuilder()
+      val deadlineHeight = r4(4)
+      val ticketSold = r4(5)
+      val total_erg = req.ticketCount * ticketPrice
+      r4.update(5, ticketSold + req.ticketCount)
 
-      val R4 = raffleBox.getRegisters.get(0).getValue.asInstanceOf[Long]
-      val R5 = raffleBox.getRegisters.get(1).getValue.asInstanceOf[Long]
-      val R6 = raffleBox.getRegisters.get(2).getValue.asInstanceOf[Long]
-      val R7 = new String(raffleBox.getRegisters.get(3).getValue.asInstanceOf[Coll[Byte]].toArray,
-        StandardCharsets.UTF_8)
+      val outputRaffle = txB.outBoxBuilder()
+        .value(raffleBox.getValue + total_erg)
+        .contract(addresses.getRaffleActiveContract())
+        .tokens(
+          raffleBox.getTokens.get(0),
+          new ErgoToken(raffleBox.getTokens.get(1).getId, raffleBox.getTokens.get(1).getValue - req.ticketCount)
+        )
+        .registers(
+          utils.longListToErgoValue(r4),
+          raffleBox.getRegisters.get(1),
+          raffleBox.getRegisters.get(2),
+          raffleBox.getRegisters.get(3)
+        ).build()
 
-      //println(R7)
-      //println("OK")
-      val ticketPrice = io.circe.jawn.parse(R7)
-        .getOrElse(throw new Throwable("ticket parse error"))
-        .hcursor.downField("ticketPrice").as[Long].getOrElse(throw new Throwable("ticketPrice not Found"))
-
-      //println("OK")
-      val deadlineHeight = io.circe.jawn.parse(R7)
-        .getOrElse(throw new Throwable("deadLine parse error"))
-        .hcursor.downField("deadlineHeight").as[Long].getOrElse(throw new Throwable("deadLine not Found"))
-
-      //println(R7)
-
-      //val tickets = (proxyBox.getValue - 2 * Configs.fee) / 1000000
-      val newRaffleBox = txB.outBoxBuilder()
-        .value(raffleBox.getValue + proxyBox.getValue - 2 * Configs.fee)
-        .contract(new ErgoTreeContract(Address.create(req.raffleAddress).getErgoAddress.script))
-        .tokens(new ErgoToken(raffleBox.getTokens.get(0).getId,  raffleBox.getTokens.get(0).getValue - req.ticketCount),
-          new ErgoToken(raffleBox.getTokens.get(1).getId,  raffleBox.getTokens.get(1).getValue))
-        .registers(ErgoValue.of((R4 + req.ticketCount).toLong) , ErgoValue.of(R5), ErgoValue.of(R6), ErgoValue.of(R7.getBytes("utf-8")))
-        .build()
-
-      val winnerContract = ctx.compileContract(
-        ConstantsBuilder.create()
-          .build(),
-        raffleContract.winnerScript)
-
-      val winnerErgoTree = winnerContract.getErgoTree
-      val winnerScriptHash: Digest32 = scorex.crypto.hash.Blake2b256(winnerErgoTree.bytes)
-
-      // TODO: Change the place and remove update db
-      val ticketContract = ctx.compileContract(
-        ConstantsBuilder.create()
-          .item("deadlineHeight", deadlineHeight)
-          .item("winnerScriptHash", winnerScriptHash)
-          .item("ticketPrice", 1000000L)
-          //.item("projectPubKey", Configs.raffleProjectAddress.getPublicKey)
-          .build(),
-        raffleContract.ticketScript)
-
-      val propByte = new ErgoTreeContract(Address.create(req.participantAddress).getErgoAddress.script)
-
-      val scriptTokenRepoHash: Digest32 = scorex.crypto.hash.Blake2b256(raffleBox.getErgoTree.bytes)
-      val TicketBox = txB.outBoxBuilder()
+      val ticketOutput = txB.outBoxBuilder()
         .value(Configs.fee)
-        .contract(ticketContract)
-        .registers(ErgoValue.of(R4.toLong), ErgoValue.of(req.ticketCount), ErgoValue.of(scriptTokenRepoHash),
-          ErgoValue.of(propByte.getErgoTree.bytes))
-        .tokens(new ErgoToken(raffleBox.getTokens.get(0).getId, req.ticketCount))
+        .contract(addresses.getTicketContract())
+        .tokens(
+          new ErgoToken(raffleBox.getTokens.get(1).getId, req.ticketCount)
+        )
+        .registers(
+          ErgoValue.of(new ErgoTreeContract(Address.create(req.participantAddress).getErgoAddress.script).getErgoTree.bytes),
+          utils.longListToErgoValue(Array(ticketSold, ticketSold + req.ticketCount, deadlineHeight, ticketPrice))
+        ).build()
+
+      val txBoxList: Seq[InputBox] = Seq(raffleBox) ++ paymentBoxList.getBoxes.asScala.toSeq
+      val tx = txB.boxesToSpend(txBoxList.asJava)
+        .fee(Configs.fee)
+        .outputs(outputRaffle, ticketOutput)
+        .sendChangeTo(Address.create(req.participantAddress).getErgoAddress)
         .build()
 
-      val tx = txB.boxesToSpend(Seq(raffleBox, proxyBox).asJava)
-        .fee(Configs.fee)
-        .outputs(newRaffleBox, TicketBox)
-        .sendChangeTo(Configs.serviceAddress.getErgoAddress)
+      val prover = ctx.newProverBuilder()
         .build()
 
       val signedTx = prover.sign(tx)
-      donateReqDAO.updateSignedDonateTx(req.id, signedTx.toJson(false))
-      donateReqDAO.updateTicketAddress(req.id, Configs.addressEncoder.fromProposition(ticketContract.getErgoTree).get.toString)
+
+      logger.debug("Donate Tx created with id: "+ signedTx.getId)
+      val txId = ctx.sendTransaction(signedTx)
+      logger.info("Donate Transaction Sent with TxId: "+ txId)
+      donateReqDAO.updateDonateTxId(req.id, signedTx.getId)
       donateReqDAO.updateStateById(req.id, 1)
-      //val txId = ctx.sendTransaction(signedTx)
-      println("Donate Tx created with id:  " + signedTx.getId)
     })
   }
 
   def isReady(req: DonateReq): Boolean = {
     val currentTime = Calendar.getInstance().getTimeInMillis / 1000
     client.getClient.execute(ctx => {
-      if(req.state == 0){
-        val paymentBoxList = ctx.getUnspentBoxesFor(Address.create(req.paymentAddress), 0, 100)
-        println(paymentBoxList)
-        if (paymentBoxList.size() == 0) return false
-//        println("required amount is "+req.ticketPrice * req.ticketCount," price: "+req.ticketPrice)
-        for (i <- 0 until paymentBoxList.size()) {
-          if (paymentBoxList.get(i).getValue >= req.ticketPrice * req.ticketCount) {
-            println("payment box found")
-            donateReqDAO.updateTTL(req.id, currentTime + Configs.creationDelay)
-            return true
-          }
+      logger.debug("Request state : "+ req.state.toString)
+      if (req.state == 0) {
+        val paymentBoxList = ctx.getCoveringBoxesFor(Address.create(req.paymentAddress), req.fee)
+        logger.debug(paymentBoxList.getCoveredAmount.toString +", "+ req.fee.toString)
+        if(paymentBoxList.isCovered) {
+          logger.debug("payment box found")
+          donateReqDAO.updateTTL(req.id, currentTime + Configs.creationDelay)
+          return true
         }
-        return false
       }
       else {
-        val newTicketList = ctx.getUnspentBoxesFor(Address.create(req.ticketAddress), 0, 100)
-        if (newTicketList.size() != 0){
-          for (i <- 0 until newTicketList.size()) {
-            if (newTicketList.get(i).getTokens.get(0).getId.toString == req.raffleToken &&
-                newTicketList.get(i).getRegisters.get(2).toString == req.participantAddress) {
-              donateReqDAO.updateStateById(req.id, 2)
-              return false
-            }
-          }
+        if(checkTransaction(req.donateTxID.getOrElse("")) == 1){
+          donateReqDAO.updateStateById(req.id, 2)
         }
-        val paymentBoxList = ctx.getUnspentBoxesFor(Address.create(req.paymentAddress), 0, 100)
-        println(paymentBoxList)
-        if (paymentBoxList.size() == 0) return false
-        for (i <- 0 until paymentBoxList.size()) {
-          if (paymentBoxList.get(i).getValue >= req.ticketPrice* req.ticketCount) {
-            println("payment box found")
-            donateReqDAO.updateTTL(req.id, currentTime + Configs.creationDelay)
-            return true
-          }
-        }
-        return false
       }
     })
-  }
-
-  def update(req: DonateReq): Unit ={
-    createDonateTx(req)
-  }
-
-  // TODO: Chaining
-  def isValid(req: DonateReq): Boolean ={
     false
   }
 
-  def nextStage(req: DonateReq): Unit ={
-    client.getClient.execute(ctx => {
-        val signedCreationTx = ctx.signedTxFromJson(utils.show(req.signedDonateTxJson))
-        val txId = ctx.sendTransaction(signedCreationTx)
-        println("Donate Transaction Sent with TxId: ", txId)
-    })
+  def checkTransaction(txId: String): Int = {
+    if(txId != "") {
+      val unconfirmedTx = explorer.getUnconfirmedTx(txId)
+      if (unconfirmedTx == Json.Null) {
+        val confirmedTx = explorer.getConfirmedTx(txId)
+        if (confirmedTx == Json.Null) {
+          0 // resend transaction
+        } else {
+          1 // transaction mined
+        }
+      } else {
+        2 // transaction already in mempool
+      }
+    }else{
+      0
+    }
   }
 }

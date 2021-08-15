@@ -469,8 +469,8 @@ class RaffleContract @Inject()(){
   lazy val donateScript : String =
     s"""{
        |  proveDlog(decodePoint(pk)) ||
-       |  sigmaProp(//(OUTPUTS(1).R7[Coll[Byte]].get == pk) &&
-       |            (INPUTS(0).tokens(0)._1  == tokenId) &&
+       |  sigmaProp((OUTPUTS(1).R4[Coll[Byte]].get == pk) &&
+       |            (INPUTS(0).tokens(1)._1  == tokenId) &&
        |            (OUTPUTS(1).tokens(0)._2 == ticketCount))
        |}""".stripMargin
 

@@ -22,16 +22,15 @@ trait DonateReqComponent {
     def paymentAddress = column[String]("PAYMENT_ADD")
     def raffleAddress = column[String]("RAFFLE_ADD")
     def raffleToken = column[String]("RAFFLE_TOKEN")
-    def signedDonateTx = column[String]("S_DONATE_TX")
+    def donateTxId = column[String]("DONATE_TX_ID")
     def participantAddress = column[String]("PARTICIPANT_ADD")
-    def ticketAddress = column[String]("TICKET_ADD")
 
     def timeOut = column[Long]("TIME_OUT")
     def ttl = column[Long]("TTL")
 
     // TODO: Set default values
     def * = (id, ticketCount, ticketPrice, state, paymentAddress, raffleAddress,
-      raffleToken, signedDonateTx.?, participantAddress, ticketAddress, timeOut, ttl) <> (DonateReq.tupled, DonateReq.unapply)
+      raffleToken, donateTxId.?, participantAddress, timeOut, ttl) <> (DonateReq.tupled, DonateReq.unapply)
   }
 
 }
@@ -51,9 +50,9 @@ class DonateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
    */
   def insert(ticketCount:Long, ticketPrice: Long, state: Int, paymentAddress: String,
              raffleAddress: String, raffleToken: String, signedDonateTx: Option[String],
-             participantAddress: String, ticketAddress: String, timeOut: Long, ttl: Long): Unit ={
+             participantAddress: String, timeOut: Long, ttl: Long): Unit ={
     val action = requests += DonateReq(1, ticketCount, ticketPrice, state, paymentAddress, raffleAddress, raffleToken,
-      signedDonateTx, participantAddress, ticketAddress, timeOut, ttl)
+      signedDonateTx, participantAddress, timeOut, ttl)
     Await.result(db.run(action).map(_ => ()), Duration.Inf)
   }
 
@@ -82,17 +81,11 @@ class DonateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
     db.run(updateAction)
   }
 
-  def updateSignedDonateTx(id: Long, SDTx: String): Int = {
-    val q = for { c <- requests if c.id === id } yield c.signedDonateTx
+  def updateDonateTxId(id: Long, SDTx: String): Int = {
+    val q = for { c <- requests if c.id === id } yield c.donateTxId
     val updateAction = q.update(SDTx)
     Await.result(db.run(updateAction), Duration.Inf)
     // TODO: Replace Awaits with DB multi action
-  }
-
-  def updateTicketAddress(id: Long, ADD: String): Int = {
-    val q = for { c <- requests if c.id === id } yield c.ticketAddress
-    val updateAction = q.update(ADD)
-    Await.result(db.run(updateAction), Duration.Inf)
   }
 
   def updateTTL(id: Long, ttl: Long): Int = {
