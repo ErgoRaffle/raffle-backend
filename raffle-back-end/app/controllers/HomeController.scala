@@ -1,22 +1,20 @@
 package controllers
 
-import java.nio.charset.StandardCharsets
-
 import helpers.{Configs, Utils}
 import io.circe.Json
 import io.circe.generic.codec.DerivedAsObjectCodec.deriveCodec
 import network.{Client, Explorer}
+import org.ergoplatform.appkit.{BlockchainContext, ErgoValue}
+import play.api.Logger
 import play.api.libs.circe.Circe
 import play.api.mvc._
 import raffle.{CreateReqUtils, DonateReqUtils, RaffleContract, RaffleUtils}
-import javax.inject._
-import org.ergoplatform.appkit.ErgoValue
-import play.api.Logger
 import sigmastate.serialization.ErgoTreeSerializer
 import special.collection.Coll
 
+import java.nio.charset.StandardCharsets
+import javax.inject._
 import scala.util.Try
-import scala.util.control.Breaks.{break, breakable}
 
 
 @Singleton
@@ -188,26 +186,27 @@ class HomeController @Inject()(assets: Assets, raffleUtils: RaffleUtils, explore
    */
   def addRaffle(): Action[Json] = Action(circe.json) { implicit request =>
     try {
-      val winnerPercent: Int = request.body.hcursor.downField("winnerPercent").as[Int].getOrElse(throw new Throwable("winnerPercent field must exist"))
-      val deadlineHeight: Long = request.body.hcursor.downField("deadlineHeight").as[Long].getOrElse(throw new Throwable("deadlineHeight field must exist"))
-      val minToRaise: Long = request.body.hcursor.downField("minToRaise").as[Long].getOrElse(throw new Throwable("minToRaise field must exist"))
-      val name: String = request.body.hcursor.downField("name").as[String].getOrElse(throw new Throwable("name field must exist"))
-      val description: String = request.body.hcursor.downField("description").as[String].getOrElse(throw new Throwable("description field must exist"))
-      val charityAddr: String = request.body.hcursor.downField("charityAddr").as[String].getOrElse(throw new Throwable("charityAddr field must exist"))
-      val walletAddr: String = request.body.hcursor.downField("walletAddr").as[String].getOrElse(throw new Throwable("charityAddr field must exist"))
-      val ticketPrice: Long = request.body.hcursor.downField("ticketPrice").as[Long].getOrElse(throw new Throwable("charityAddr field must exist"))
+      client.getClient.execute((ctx: BlockchainContext) => {
+        val name: String = request.body.hcursor.downField("name").as[String].getOrElse(throw new Throwable("name field must exist"))
+        val description: String = request.body.hcursor.downField("description").as[String].getOrElse(throw new Throwable("description field must exist"))
+        val goal: Long = request.body.hcursor.downField("goal").as[Long].getOrElse(throw new Throwable("minToRaise field must exist"))
+        val deadlineHeight: Long = request.body.hcursor.downField("deadlineHeight").as[Long].getOrElse(throw new Throwable("deadlineHeight field must exist"))
+        val charityPercent: Int = request.body.hcursor.downField("charityPercent").as[Int].getOrElse(throw new Throwable("charityPercent field must exist"))
+        val charityAddr: String = request.body.hcursor.downField("charityAddr").as[String].getOrElse(throw new Throwable("charityAddr field must exist"))
+        val walletAddr: String = request.body.hcursor.downField("walletAddr").as[String].getOrElse(throw new Throwable("charityAddr field must exist"))
+        val ticketPrice: Long = request.body.hcursor.downField("ticketPrice").as[Long].getOrElse(throw new Throwable("charityAddr field must exist"))
+        val paymentAddress = createReqUtils.CreateRaffleProxyAddress(walletAddr, charityPercent, name, description, deadlineHeight + ctx.getHeight, charityAddr, goal, ticketPrice)
+        val amount = Configs.fee * 4
+        val delay = Configs.creationDelay
 
-      val paymentAddress = createReqUtils.CreateRaffleProxyAddress(walletAddr, winnerPercent, name, description, deadlineHeight, charityAddr, minToRaise, ticketPrice)
-      val CreateFee = Configs.fee * 3
-      val delay = Configs.creationDelay
-
-      Ok(
-        s"""{
-           |  "deadline": $delay,
-           |  "erg": $CreateFee,
-           |  "address": "$paymentAddress"
-           |}""".stripMargin
-      ).as("application/json")
+        Ok(
+          s"""{
+             |  "deadline": $delay,
+             |  "erg": $amount,
+             |  "address": "$paymentAddress"
+             |}""".stripMargin
+        ).as("application/json")
+      })
     } catch {
       case e: Throwable => exception(e)
     }

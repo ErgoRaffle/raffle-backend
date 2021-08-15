@@ -22,7 +22,7 @@ class Client @Inject()(utils: Utils) {
   def setClient(): Long = {
     print("salam")
     try {
-      client = RestApiErgoClient.create(Configs.nodeUrl, Configs.networkType, Configs.nodeApiKey)
+      client = RestApiErgoClient.create(Configs.nodeUrl, Configs.networkType, Configs.nodeApiKey, Configs.explorerUrl)
       client.execute(ctx => {
         ctx.getHeight
       })
@@ -51,7 +51,7 @@ class Client @Inject()(utils: Utils) {
    */
   def getUnspentBox(address: Address): List[InputBox] = {
     client.execute(ctx =>
-      ctx.getUnspentBoxesFor(address).asScala.toList
+      ctx.getUnspentBoxesFor(address, 0, 100).asScala.toList
     )
   }
 

@@ -18,29 +18,26 @@ trait CreateReqComponent {
     def id = column[Long]("ID", O.PrimaryKey, O.AutoInc)
     def name = column[String]("NAME")
     def description = column[String]("DESCRIPTION")
-    def minToRaise = column[Long]("MIN_TO_RAISE")
+    def goal = column[Long]("GOAL")
     def deadlineHeight = column[Long]("DEADLINE_HEIGHT")
-    def winnerPercent = column[Int]("WINNER_PERCENT")
-    def charityAdd = column[String]("CHARITY_ADD")
+    def charityPercent = column[Int]("CHARITY_PERCENT")
+    def charityAddr = column[String]("CHARITY_ADDR")
     def ticketPrice = column[Long]("TICKET_PRICE")
 
     def state = column[Int]("STATE")
-    def paymentAddress = column[String]("PAYMENT_ADD")
-    def proxyAddress = column[String]("PROXY_ADD")
-    def raffleAddress = column[String]("RAFFLE_ADD")
-    def raffleToken = column[String]("RAFFLE_TOKEN")
-    def serviceBoxId = column[String]("SERVICE_BOX_ID")
-    def signedProxyTx = column[String]("S_PROXY_TX")
-    def signedCreateTx = column[String]("S_CREATE_TX")
+    def walletAddress = column[String]("WALLET_ADDR")
+    def paymentAddress = column[String]("PAYMENT_ADDR")
+    def createTxId = column[String]("CREATE_TX_ID")
+    def mergeTxId = column[String]("MERGE_TX_ID")
 
     def chainedWith = column[Long]("CHAINED_WITH")
     def isChained = column[Boolean]("IS_CHAINED")
     def timeOut = column[Long]("TIME_OUT")
     def ttl = column[Long]("TTL")
 
-    def * = (id, name, description, minToRaise, deadlineHeight, winnerPercent, charityAdd,
-      ticketPrice, state, paymentAddress, proxyAddress, raffleAddress, raffleToken, serviceBoxId, signedProxyTx.?,
-      signedCreateTx.?, chainedWith, isChained, timeOut, ttl) <> (CreateReq.tupled, CreateReq.unapply)
+    def * = (id, name, description, goal, deadlineHeight, charityPercent, charityAddr,
+      ticketPrice, state, walletAddress, paymentAddress,
+      createTxId.?, mergeTxId.?, chainedWith, isChained, timeOut, ttl) <> (CreateReq.tupled, CreateReq.unapply)
   }
 
 }
@@ -58,16 +55,14 @@ class CreateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
    * inserts a request into db
    *
    */
-  def insert(name: String, description: String, minToRaise: Long,
-             deadlineHeight: Long, winnerPercent: Int, charityAdd: String,
-             ticketPrice: Long, state: Int, paymentAddress: String,
-             proxyAddress: String, raffleAddress: String, raffleToken: String,
-             serviceBoxId: String, signedProxyTx: Option[String],  signedCreateTx: Option[String],
+  def insert(name: String, description: String, goal: Long,
+             deadlineHeight: Long, charityPercent: Int, charityAddr: String,
+             ticketPrice: Long, state: Int, walletAddress: String, paymentAddress: String,
+             createTxId: Option[String],  mergeTxId: Option[String],
              chainedWith: Long, isChained: Boolean, timeOut: Long, ttl: Long): Future[Unit] ={
-    val action = requests += CreateReq(1, name, description, minToRaise, deadlineHeight, winnerPercent, charityAdd,
-      ticketPrice, state, paymentAddress, proxyAddress, raffleAddress, raffleToken, serviceBoxId, signedProxyTx,
-      signedCreateTx, chainedWith, isChained, timeOut, ttl)
-    db.run(action).map(_ => ())
+    val action = requests += CreateReq(1, name, description, goal, deadlineHeight, charityPercent, charityAddr,
+      ticketPrice, state, walletAddress, paymentAddress, createTxId, mergeTxId, chainedWith, isChained, timeOut, ttl)
+    db.run(action.asTry).map( _ => ())
   }
 
   /**
@@ -95,27 +90,15 @@ class CreateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
     db.run(updateAction)
   }
 
-  def updateSignedProxyTx(id: Long, SPTx: String): Int = {
-    val q = for { c <- requests if c.id === id } yield c.signedProxyTx
-    val updateAction = q.update(SPTx)
+  def updateCreateTxID(id: Long, TxId: String): Int = {
+    val q = for { c <- requests if c.id === id } yield c.createTxId
+    val updateAction = q.update(TxId)
     Await.result(db.run(updateAction), Duration.Inf)
   }
 
-  def updateSignedCreationTx(id: Long, SCTx: String): Int = {
-    val q = for { c <- requests if c.id === id } yield c.signedCreateTx
-    val updateAction = q.update(SCTx)
-    Await.result(db.run(updateAction), Duration.Inf)
-  }
-
-  def updateServiceBoxId(id: Long, SVBId: String): Int = {
-    val q = for { c <- requests if c.id === id } yield c.serviceBoxId
-    val updateAction = q.update(SVBId)
-    Await.result(db.run(updateAction), Duration.Inf)
-  }
-
-  def updateRaffleToken(id: Long, token: String): Int = {
-    val q = for { c <- requests if c.id === id } yield c.raffleToken
-    val updateAction = q.update(token)
+  def updateMergeTxId(id: Long, TxId: String): Int = {
+    val q = for { c <- requests if c.id === id } yield c.mergeTxId
+    val updateAction = q.update(TxId)
     Await.result(db.run(updateAction), Duration.Inf)
   }
 

@@ -3,6 +3,7 @@ package raffle
 import helpers.{Configs, Utils}
 import io.circe.Json
 import network.{Client, Explorer}
+
 import special.collection.Coll
 import org.ergoplatform.appkit._
 import org.ergoplatform.appkit.impl.ErgoTreeContract
@@ -65,7 +66,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, ra
       }
 
       // If the box not found in mempool find it from UTXO set
-      val listBoxes = ctx.getUnspentBoxesFor(Address.create(address))
+      val listBoxes = ctx.getUnspentBoxesFor(Address.create(address), 0, 100)
       // TODO: Change it random selection if multiple service boxes created
       listBoxes.asScala.filter(box => box.getTokens.size() > 0)
         .filter(box => box.getTokens.get(0).getId.toString == tokenId).head
@@ -85,7 +86,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, ra
           .build(),
         raffleContract.raffleServiceScript)
 
-      val listBoxes = ctx.getUnspentBoxesFor(Configs.serviceAddress)
+      val listBoxes = ctx.getUnspentBoxesFor(Configs.serviceAddress, 0, 100)
       val serviceBox: InputBox = listBoxes.asScala.filter(box => box.getValue >= 9000000000L).head
       println("serviceBox value: " + serviceBox.getValue)
 
@@ -109,6 +110,15 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, ra
     })
   }
 
+  // TODO: should be edited
+  def boxRegister(boxId: String): String = {
+    client.getClient.execute(ctx => {
+      val register = new String(ctx.getBoxesById(boxId)(0).getRegisters.get(3).getValue.asInstanceOf[Coll[Byte]].toArray,
+        StandardCharsets.UTF_8)
+      register
+    })
+  }
+
   def isReady(raffle: ActiveRaffle): Boolean ={
     client.getClient.execute(ctx => {
       if(raffle.state == 0) {
@@ -120,7 +130,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, ra
       else if(raffle.state == 1) return true
       else if(raffle.state == 2) {
         // Check if raffle successfully destroyed
-        val boxes = ctx.getUnspentBoxesFor(Address.create(raffle.raffleAddress))
+        val boxes = ctx.getUnspentBoxesFor(Address.create(raffle.raffleAddress), 0, 100)
         val raffleBox: InputBox = boxes.asScala.filter(box => box.getTokens.get(1).getId.toString == Configs.serviceTokenId)
           .filter(box => box.getTokens.get(0).getId.toString == raffle.raffleToken).head
 
@@ -131,7 +141,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, ra
             ConstantsBuilder.create()
               .build(),
             raffleContract.winnerScript)
-          val winnerBoxList = ctx.getUnspentBoxesFor(Address.fromErgoTree(winnerContract.getErgoTree, Configs.networkType))
+          val winnerBoxList = ctx.getUnspentBoxesFor(Address.fromErgoTree(winnerContract.getErgoTree, Configs.networkType), 0, 100)
           val winnerBox = winnerBoxList.asScala.filter(box => box.getTokens.get(0).getId.toString == raffle.raffleToken).head
           activeRafflesDAO.updateWinnerBoxId(raffle.id, winnerBox.getId.toString)
           activeRafflesDAO.updateStateById(raffle.id, 3)
@@ -145,7 +155,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, ra
       }
       else if(raffle.state == 8) {
         // Check if the raffle refund phase is finished or not
-        val boxes = ctx.getUnspentBoxesFor(Address.create(raffle.raffleAddress))
+        val boxes = ctx.getUnspentBoxesFor(Address.create(raffle.raffleAddress), 0, 100)
         val raffleBox: InputBox = boxes.asScala.filter(box => box.getTokens.get(1).getId.toString == Configs.serviceTokenId)
           .filter(box => box.getTokens.get(0).getId.toString == raffle.raffleToken).head
 
@@ -157,7 +167,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, ra
       }
       else if(raffle.state == 9) {
         // Check if raffle successfully destroyed
-        val boxes = ctx.getUnspentBoxesFor(Address.create(raffle.raffleAddress))
+        val boxes = ctx.getUnspentBoxesFor(Address.create(raffle.raffleAddress), 0, 100)
         val raffleBox: InputBox = boxes.asScala.filter(box => box.getTokens.get(1).getId.toString == Configs.serviceTokenId)
           .filter(box => box.getTokens.get(0).getId.toString == raffle.raffleToken).head
 
@@ -169,7 +179,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, ra
 
   def raffleFinishProcess(raffle: ActiveRaffle): Unit = {
     client.getClient.execute(ctx => {
-      val boxes = ctx.getUnspentBoxesFor(Address.create(raffle.raffleAddress))
+      val boxes = ctx.getUnspentBoxesFor(Address.create(raffle.raffleAddress), 0, 100)
       val raffleBox: InputBox = boxes.asScala.filter(box => box.getTokens.get(1).getId.toString == Configs.serviceTokenId)
         .filter(box => box.getTokens.get(0).getId.toString == raffle.raffleToken).head
 
@@ -204,12 +214,12 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, ra
 
   def winnerAnnouncement(raffle: ActiveRaffle): Unit ={
     client.getClient.execute(ctx => {
-      val boxes = ctx.getUnspentBoxesFor(Address.create(raffle.raffleAddress))
+      val boxes = ctx.getUnspentBoxesFor(Address.create(raffle.raffleAddress), 0, 100)
       val raffleBox: InputBox = boxes.asScala.filter(box => box.getTokens.get(1).getId.toString == Configs.serviceTokenId)
         .filter(box => box.getTokens.get(0).getId.toString == raffle.raffleToken).head
 
       // TODO Change here to use mempool
-      val boxes2 = ctx.getUnspentBoxesFor(Configs.serviceAddress)
+      val boxes2 = ctx.getUnspentBoxesFor(Configs.serviceAddress, 0, 100)
       val serviceBox: InputBox = boxes2.asScala.filter(box => box.getTokens.size() > 1)
         .filter(box => box.getTokens.get(0).getId.toString == Configs.serviceTokenId)
         .filter(box => box.getTokens.get(0).getValue > 1000).head
@@ -266,7 +276,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, ra
 
   def destroyAfterRefund(raffle: ActiveRaffle): Unit ={
     client.getClient.execute(ctx => {
-      val boxes = ctx.getUnspentBoxesFor(Address.create(raffle.raffleAddress))
+      val boxes = ctx.getUnspentBoxesFor(Address.create(raffle.raffleAddress), 0, 100)
       val raffleBox: InputBox = boxes.asScala.filter(box => box.getTokens.get(1).getId.toString == Configs.serviceTokenId)
         .filter(box => box.getTokens.get(0).getId.toString == raffle.raffleToken).head
 

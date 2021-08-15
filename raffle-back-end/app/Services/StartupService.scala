@@ -19,20 +19,18 @@ class StartupService @Inject()(node: Client, system: ActorSystem, createReqHandl
   private val logger: Logger = Logger(this.getClass)
 
   logger.info("App started!")
-  println("a")
   node.setClient()
-  println("b")
 
   val jobs: ActorRef = system.actorOf(Props(new Jobs(createReqHandler, donateReqHandler,
     refundReqHandler, raffleHandler, raffleUtils)), "scheduler")
 
-//  system.scheduler.scheduleAtFixedRate(
-//    initialDelay = 2.seconds,
-//    interval = Configs.creationThreadInterval.seconds,
-//    receiver = jobs,
-//    message = JobsUtil.create
-//  )
-//
+  system.scheduler.scheduleAtFixedRate(
+    initialDelay = 2.seconds,
+    interval = Configs.creationThreadInterval.seconds,
+    receiver = jobs,
+    message = JobsUtil.create
+  )
+
 //  system.scheduler.scheduleAtFixedRate(
 //    initialDelay = 2.seconds,
 //    interval = Configs.donateThreadInterval.seconds,

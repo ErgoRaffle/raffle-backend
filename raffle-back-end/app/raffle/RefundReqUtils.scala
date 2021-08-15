@@ -17,7 +17,7 @@ class RefundReqUtils  @Inject()(client: Client, refundReqDAO: RefundReqDAO){
     client.getClient.execute(ctx => {
 
       // TODO: Change this to chain the refund transactions
-      val boxes = ctx.getUnspentBoxesFor(Address.create(req.raffleAddress))
+      val boxes = ctx.getUnspentBoxesFor(Address.create(req.raffleAddress), 0, 100)
       val raffleBox: InputBox = boxes.asScala.filter(box => box.getTokens.get(1).getId.toString == Configs.serviceTokenId)
         .filter(box => box.getTokens.get(0).getId.toString == req.raffleToken).head
 

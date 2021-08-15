@@ -12,14 +12,22 @@ import scala.util.{Failure, Success, Try}
 class Explorer() {
   private val baseUrlV0 = s"${Configs.explorerUrl}/api/v0"
   private val baseUrlV1 = s"${Configs.explorerUrl}/api/v1"
-  private val tx = s"$baseUrlV0/transactions"
+  private val tx = s"$baseUrlV1/transactions"
   private val unconfirmedTx = s"$baseUrlV0/transactions/unconfirmed"
   private val unspentBoxesByTokenId = s"$baseUrlV1/boxes/unspent/byTokenId"
   private val boxesP1 = s"$tx/boxes"
+  private val mempoolTransactions = s"$baseUrlV1/mempool/transactions/byAddress/"
   /**
    * @param txId transaction id
    * @return transaction if it is unconfirmed
    */
+  def getAddressMempoolTransactions(address: String): Json = try {
+    GetRequest.httpGet(s"$mempoolTransactions/$address")
+  }
+  catch {
+    case _: Throwable => Json.Null
+  }
+
   def getUnconfirmedTx(txId: String): Json = try {
     GetRequest.httpGet(s"$unconfirmedTx/$txId")
   }

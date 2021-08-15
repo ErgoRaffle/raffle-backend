@@ -3,6 +3,9 @@ package helpers
 import java.io.{PrintWriter, StringWriter}
 import javax.inject.{Inject, Singleton}
 import com.typesafe.config.ConfigFactory
+import org.ergoplatform.appkit.{ErgoType, ErgoValue, JavaHelpers}
+import special.collection.Coll
+
 import java.security.MessageDigest
 
 @Singleton
@@ -43,6 +46,11 @@ class Utils @Inject()() {
   def show(x: Option[String]) = x match {
     case Some(s) => s
     case None => "?"
+  }
+
+  def longListToErgoValue(elements: Array[Long]): ErgoValue[Coll[Long]] = {
+    val longColl = JavaHelpers.SigmaDsl.Colls.fromArray(elements)
+    ErgoValue.of(longColl, ErgoType.longType())
   }
 
 }
