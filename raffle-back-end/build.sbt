@@ -16,7 +16,7 @@ libraryDependencies ++= Seq(
   guice,
   "org.scalaj" %% "scalaj-http" % "2.4.2",
   "com.dripower" %% "play-circe" % "2712.0",
-  "org.ergoplatform" %% "ergo-appkit" % "raffle-appkit-local",
+  "org.ergoplatform" %% "ergo-appkit" % "develop-dd40e4e5-SNAPSHOT",
   "org.scorexfoundation" %% "scrypto" % "2.1.10",
   "com.typesafe.play" %% "play-slick" % "4.0.0",
   "com.typesafe.play" %% "play-slick-evolutions" % "4.0.0",

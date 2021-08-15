@@ -44,6 +44,8 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         try {
           val asset = box.hcursor.downField("assets").as[Seq[Json]].getOrElse(null)(1)
           if (asset.hcursor.get[String]("tokenId").getOrElse("") == Configs.serviceTokenId) raffleBox = box
+        } catch {
+          case e: Throwable => println(e)
         }
       }
 
@@ -62,11 +64,11 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
     client.getClient.execute(ctx => {
 
       // TODO: Change this to chain the donation transactions
-      val boxes = ctx.getUnspentBoxesFor(Address.create(req.raffleAddress))
+      val boxes = ctx.getUnspentBoxesFor(Address.create(req.raffleAddress), 0, 100)
       val raffleBox: InputBox = boxes.asScala.filter(box => box.getTokens.get(1).getId.toString == Configs.serviceTokenId)
         .filter(box => box.getTokens.get(0).getId.toString == req.raffleToken).head
 
-      val paymentBoxList = ctx.getUnspentBoxesFor(Address.create(req.paymentAddress))
+      val paymentBoxList = ctx.getUnspentBoxesFor(Address.create(req.paymentAddress), 0, 100)
       if (paymentBoxList.size() == 0) return
       var proxyBox: InputBox = null
       for (i <- 0 until paymentBoxList.size()) {
@@ -157,7 +159,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
     val currentTime = Calendar.getInstance().getTimeInMillis / 1000
     client.getClient.execute(ctx => {
       if(req.state == 0){
-        val paymentBoxList = ctx.getUnspentBoxesFor(Address.create(req.paymentAddress))
+        val paymentBoxList = ctx.getUnspentBoxesFor(Address.create(req.paymentAddress), 0, 100)
         println(paymentBoxList)
         if (paymentBoxList.size() == 0) return false
 //        println("required amount is "+req.ticketPrice * req.ticketCount," price: "+req.ticketPrice)
@@ -171,7 +173,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         return false
       }
       else {
-        val newTicketList = ctx.getUnspentBoxesFor(Address.create(req.ticketAddress))
+        val newTicketList = ctx.getUnspentBoxesFor(Address.create(req.ticketAddress), 0, 100)
         if (newTicketList.size() != 0){
           for (i <- 0 until newTicketList.size()) {
             if (newTicketList.get(i).getTokens.get(0).getId.toString == req.raffleToken &&
@@ -181,7 +183,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
             }
           }
         }
-        val paymentBoxList = ctx.getUnspentBoxesFor(Address.create(req.paymentAddress))
+        val paymentBoxList = ctx.getUnspentBoxesFor(Address.create(req.paymentAddress), 0, 100)
         println(paymentBoxList)
         if (paymentBoxList.size() == 0) return false
         for (i <- 0 until paymentBoxList.size()) {
