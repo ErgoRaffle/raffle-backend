@@ -29,7 +29,8 @@ fullClasspath in assembly += Attributed.blank(PlayKeys.playPackageAssets.value)
 
 val testingDependencies = Seq(
   "org.scalatest" %% "scalatest" % "3.0.8" % "test",
-  "org.scalacheck" %% "scalacheck" % "1.14.+" % "test"
+  "org.scalacheck" %% "scalacheck" % "1.14.+" % "test",
+  "org.scalatestplus.play" %% "scalatestplus-play" % "5.0.0" % "test"
 )
 
 

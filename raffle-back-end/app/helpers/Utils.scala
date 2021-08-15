@@ -4,7 +4,11 @@ import java.io.{PrintWriter, StringWriter}
 
 import javax.inject.{Inject, Singleton}
 import com.typesafe.config.ConfigFactory
-import org.ergoplatform.appkit.{ErgoType, ErgoValue, JavaHelpers}
+import io.circe.Json
+import network.{Client, Explorer}
+import org.ergoplatform.ErgoAddress
+import org.ergoplatform.appkit.{Address, BlockchainContext, ErgoType, ErgoValue, InputBox, JavaHelpers}
+import sigmastate.serialization.ErgoTreeSerializer
 import special.collection.Coll
 import java.security.MessageDigest
 
@@ -12,7 +16,7 @@ import org.ergoplatform.ErgoAddress
 import sigmastate.serialization.ErgoTreeSerializer
 
 @Singleton
-class Utils @Inject()() {
+class Utils @Inject()(client: Client, explorer: Explorer) {
 
   def getStackTraceStr(e: Throwable): String = {
     val sw = new StringWriter
@@ -51,13 +55,47 @@ class Utils @Inject()() {
     case None => "?"
   }
 
+  def getAddress(addressBytes: Array[Byte]): ErgoAddress = {
+    val ergoTree = ErgoTreeSerializer.DefaultSerializer.deserializeErgoTree(addressBytes)
+    Configs.addressEncoder.fromProposition(ergoTree).get
+  }
+
   def longListToErgoValue(elements: Array[Long]): ErgoValue[Coll[Long]] = {
     val longColl = JavaHelpers.SigmaDsl.Colls.fromArray(elements)
     ErgoValue.of(longColl, ErgoType.longType())
   }
 
-  def getAddress(addressBytes: Array[Byte]): ErgoAddress = {
-    val ergoTree = ErgoTreeSerializer.DefaultSerializer.deserializeErgoTree(addressBytes)
-    Configs.addressEncoder.fromProposition(ergoTree).get
+  def getServiceBox(): InputBox = {
+    client.getClient.execute((ctx: BlockchainContext) => {
+      val serviceBoxJson = explorer.getUnspentTokenBoxes(Configs.token.nft, 0, 10)
+      val serviceBoxId = serviceBoxJson.hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request")).head.hcursor.downField("boxId").as[String].getOrElse("")
+      var serviceBox = ctx.getBoxesById(serviceBoxId).head
+      val serviceAddress = Configs.addressEncoder.fromProposition(serviceBox.getErgoTree).get.toString
+      val mempool = explorer.getAddressMempoolTransactions(serviceAddress)
+      try {
+        val txs = mempool.hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request"))
+        var txMap: Map[String, Json] = Map()
+        txs.foreach(txJson => {
+          val txServiceInput = txJson.hcursor.downField("inputs").as[List[Json]].getOrElse(throw new Throwable("bad response from explorer")).head
+          val id = txServiceInput.hcursor.downField("boxId").as[String].getOrElse("")
+          txMap += (id -> txJson)
+        })
+        val keys = txMap.keys.toSeq
+        while (keys.contains(serviceBox.getId.toString)) {
+          val tmpTx = ctx.signedTxFromJson(txMap(serviceBox.getId.toString).toString())
+          serviceBox = tmpTx.getOutputsToSpend.get(0)
+        }
+      } catch {
+        case e: Throwable => println(e)
+      }
+      serviceBox
+    })
+  }
+
+  def isBoxInMemPool(box: InputBox, inputIndex: Int) : Boolean = {
+    val address = getAddress(box.getErgoTree.bytes)
+    explorer.getAddressMempoolTransactions(address.toString).hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request")).exists(transaction => {
+      transaction.hcursor.downField("inputs").as[List[Json]].getOrElse(throw new Throwable("bad request")).toArray.apply(inputIndex).hcursor.downField("boxId").as[String].getOrElse(throw new Throwable("bad request")) == box.getId.toString
+    })
   }
 }

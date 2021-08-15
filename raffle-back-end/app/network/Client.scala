@@ -9,7 +9,7 @@ import javax.inject.{Inject, Singleton}
 import scala.collection.JavaConverters._
 
 @Singleton
-class Client @Inject()(utils: Utils) {
+class Client @Inject()() {
   private val logger: Logger = Logger(this.getClass)
   private val defaultHeader: Seq[(String, String)] = Seq[(String, String)](("Content-Type", "application/json"), ("api_key", Configs.nodeApiKey))
   private var client: ErgoClient = _

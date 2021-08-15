@@ -52,40 +52,13 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
     })
   }
 
-  def getServiceBox(): InputBox = {
-    client.getClient.execute((ctx: BlockchainContext) => {
-      val serviceBoxJson = explorer.getUnspentTokenBoxes(Configs.token.nft, 0, 10)
-      val serviceBoxId = serviceBoxJson.hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request")).head.hcursor.downField("boxId").as[String].getOrElse("")
-      var serviceBox = ctx.getBoxesById(serviceBoxId).head
-      val serviceAddress = Configs.addressEncoder.fromProposition(serviceBox.getErgoTree).get.toString
-      val mempool = explorer.getAddressMempoolTransactions(serviceAddress)
-      try {
-        val txs = mempool.hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request"))
-        var txMap: Map[String, Json] = Map()
-        txs.foreach(txJson => {
-          val txServiceInput = txJson.hcursor.downField("inputs").as[List[Json]].getOrElse(throw new Throwable("bad response from explorer")).head
-          val id = txServiceInput.hcursor.downField("boxId").as[String].getOrElse("")
-          txMap += (id -> txJson)
-        })
-        val keys = txMap.keys.toSeq
-        while (keys.contains(serviceBox.getId.toString)) {
-          val tmpTx = ctx.signedTxFromJson(txMap(serviceBox.getId.toString).toString())
-          serviceBox = tmpTx.getOutputsToSpend.get(0)
-        }
-      } catch {
-        case e: Throwable => println(e)
-      }
-      serviceBox
-    })
-  }
-
   def createRaffle(req: CreateReq): SignedTransaction = {
     client.getClient.execute(ctx => {
       val txB = ctx.newTxBuilder()
       val prover = ctx.newProverBuilder()
         .withDLogSecret(Configs.serviceSecret)
         .build()
-      val serviceBox = getServiceBox()
+      val serviceBox = utils.getServiceBox()
       val proxyBoxes = ctx.getUnspentBoxesFor(Address.create(req.paymentAddress), 0, 100).asScala.toSeq
       val paymentBoxList = Seq(serviceBox) ++ proxyBoxes
       val total = proxyBoxes.map(item => item.getValue).reduce((a, b) => a + b)
