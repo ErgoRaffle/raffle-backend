@@ -72,8 +72,7 @@ class DonateReqHandler@Inject ()(client: Client, donateReqDAO: DonateReqDAO,
   private val logger: Logger = Logger(this.getClass)
 
   def handleReqs(): Unit = {
-    println("Donate handling is in process ....")
-    logger.info("Handling requests...")
+    logger.info("DonateReq Handling requests...")
     val currentTime = Calendar.getInstance().getTimeInMillis / 1000
 
     donateReqDAO.all.map(reqs => {
@@ -82,8 +81,8 @@ class DonateReqHandler@Inject ()(client: Client, donateReqDAO: DonateReqDAO,
           if (req.ttl <= currentTime || req.state == 2) {
             handleRemoval(req)
           } else {
-            println("Handling Donation Request with id: "+ req.id)
-            println("Current Time: "+currentTime+", Request timeout: "+req.timeOut+", Request ttl: "+req.ttl)
+            logger.info("Handling Donation Request with id: "+ req.id)
+            logger.info("Current Time: "+currentTime+", Request timeout: "+req.timeOut+", Request ttl: "+req.ttl)
             handleReq(req)
           }
         } catch {
@@ -97,7 +96,7 @@ class DonateReqHandler@Inject ()(client: Client, donateReqDAO: DonateReqDAO,
   }
 
   def handleRemoval(req: DonateReq): Unit = {
-    logger.info(s"will remove request: ${req.id} with state: ${req.state}")
+    logger.info(s"will remove donate request: ${req.id} with state: ${req.state}")
     donateReqDAO.deleteById(req.id)
   }
 
@@ -108,14 +107,8 @@ class DonateReqHandler@Inject ()(client: Client, donateReqDAO: DonateReqDAO,
     if(donateReqUtils.isReady(req) || req.timeOut <= currentTime){
       donateReqDAO.updateTimeOut(req.id, currentTime + Configs.checkingDelay)
       req2 = donateReqDAO.byId(req.id)
-      println("Request is Ready, Executing the request with state: "+ req2.state)
-      //      updateServiceBox()
-      if(!donateReqUtils.isValid(req2)){
-        donateReqUtils.update(req2)
-        req2 = donateReqDAO.byId(req2.id)
-        println("Request updated, with state: "+ req2.state)
-      }
-      donateReqUtils.nextStage(req2)
+      logger.info("Donate Request is Ready, Executing the request with state: "+ req2.state)
+      donateReqUtils.createDonateTx(req2)
     }
   }
 }

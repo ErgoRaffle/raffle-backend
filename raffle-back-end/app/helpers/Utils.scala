@@ -1,12 +1,15 @@
 package helpers
 
 import java.io.{PrintWriter, StringWriter}
+
 import javax.inject.{Inject, Singleton}
 import com.typesafe.config.ConfigFactory
 import org.ergoplatform.appkit.{ErgoType, ErgoValue, JavaHelpers}
 import special.collection.Coll
-
 import java.security.MessageDigest
+
+import org.ergoplatform.ErgoAddress
+import sigmastate.serialization.ErgoTreeSerializer
 
 @Singleton
 class Utils @Inject()() {
@@ -53,4 +56,8 @@ class Utils @Inject()() {
     ErgoValue.of(longColl, ErgoType.longType())
   }
 
+  def getAddress(addressBytes: Array[Byte]): ErgoAddress = {
+    val ergoTree = ErgoTreeSerializer.DefaultSerializer.deserializeErgoTree(addressBytes)
+    Configs.addressEncoder.fromProposition(ergoTree).get
+  }
 }

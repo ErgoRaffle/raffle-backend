@@ -230,12 +230,15 @@ class HomeController @Inject()(assets: Assets, raffleUtils: RaffleUtils, explore
     val raffleId: String = request.body.hcursor.downField("id").as[String].getOrElse(throw new Throwable("id field must exist"))
     val walletAddr: String = request.body.hcursor.downField("walletAddr").as[String].getOrElse(throw new Throwable("walletAddr field must exist"))
     val ticketCounts: Long = request.body.hcursor.downField("ticketCounts").as[Long].getOrElse(throw new Throwable("erg field must exist"))
-    val proxyAddress = donateReqUtils.findProxyAddress(walletAddr, raffleId, ticketCounts)
+    val response = donateReqUtils.findProxyAddress(walletAddr, raffleId, ticketCounts)
+    val paymentAddress = response._1
+    val fee = response._2
 
     Ok(
       s"""{
          | "deadline": 900,
-         | "address": "$proxyAddress",
+         | "address": "$paymentAddress",
+         | "fee" : $fee
          |}""".stripMargin
     ).as("application/json")
   }
