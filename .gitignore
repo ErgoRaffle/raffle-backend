@@ -54,3 +54,7 @@ appkit/.bloop/
 appkit/.metals/
 appkit/project/metals.sbt
 .vscode
+
+project/
+raffle-back-end/.idea/
+raffle-back-end/data/

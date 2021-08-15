@@ -29,7 +29,7 @@ public class RestApiErgoClient implements ErgoClient {
         _client = new ApiClient(_nodeUrl, "ApiKeyAuth", apiKey);
         switch (networkType) {
         case MAINNET:
-            _explorer = new ExplorerApiClient("http://176.9.65.58:7000");
+            _explorer = new ExplorerApiClient("https://api.ergoplatform.com");
             break;
         default:
             _explorer = new ExplorerApiClient("https://api-testnet.ergoplatform.com");

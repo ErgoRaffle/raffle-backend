@@ -1,11 +1,19 @@
 package helpers
 
+import java.io.{PrintWriter, StringWriter}
 import javax.inject.{Inject, Singleton}
 import com.typesafe.config.ConfigFactory
 import java.security.MessageDigest
 
 @Singleton
 class Utils @Inject()() {
+
+  def getStackTraceStr(e: Throwable): String = {
+    val sw = new StringWriter
+    val pw = new PrintWriter(sw)
+    e.printStackTrace(pw)
+    sw.toString
+  }
 
   def getAPILink(APIName: String): String = {
 //    return ConfigFactory.load().getString(s"API.${APIName}")
@@ -31,4 +39,10 @@ class Utils @Inject()() {
       .map("%02x".format(_))
       .mkString
   }
+
+  def show(x: Option[String]) = x match {
+    case Some(s) => s
+    case None => "?"
+  }
+
 }
