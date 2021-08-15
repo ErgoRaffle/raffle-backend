@@ -6,7 +6,7 @@ import helpers.{Configs, Utils}
 import javax.inject.Inject
 import network.Client
 import play.api.Logger
-import raffle.{CreateReqUtils, DonateReqUtils, RaffleUtils, RefundReqUtils}
+import raffle.{CreateReqUtils, DonateReqUtils, RaffleUtils, FinalizeReqUtils}
 import dao.{ActiveRafflesDAO, CreateReqDAO, DonateReqDAO, RefundReqDAO}
 import models.{ActiveRaffle, CreateReq, DonateReq, RefundReq}
 
@@ -115,7 +115,7 @@ class DonateReqHandler@Inject ()(client: Client, donateReqDAO: DonateReqDAO,
 
 
 class RefundReqHandler@Inject ()(client: Client, refundReqDAO: RefundReqDAO,
-                                 utils: Utils, refundReqUtils: RefundReqUtils){
+                                 utils: Utils, refundReqUtils: FinalizeReqUtils){
   private val logger: Logger = Logger(this.getClass)
 
   def handleReqs(): Unit = {
@@ -153,7 +153,7 @@ class RefundReqHandler@Inject ()(client: Client, refundReqDAO: RefundReqDAO,
 
     if(refundReqUtils.isReady(req) || req.timeOut <= currentTime){
       refundReqDAO.updateTimeOut(req.id, currentTime + Configs.checkingDelay)
-      refundReqUtils.Refund(req)
+      refundReqUtils.Refund()
     }
   }
 }
