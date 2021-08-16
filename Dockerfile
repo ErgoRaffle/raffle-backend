@@ -16,14 +16,9 @@ RUN apt-get update && \
     apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends sbt wget
+
 WORKDIR /raffle
-RUN wget https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-21.1.0/graalvm-ce-java8-linux-amd64-21.1.0.tar.gz && \
-    tar -xf graalvm-ce-java8-linux-amd64-21.1.0.tar.gz
-ENV JAVA_HOME="/raffle/graalvm-ce-java8-21.1.0"
-ENV PATH="${JAVA_HOME}/bin:$PATH"
-ADD ["./appkit/", "/raffle/appkit"]
-WORKDIR /raffle/appkit
-RUN sbt publishLocal
+
 ADD ["./raffle-back-end", "/raffle/raffle-back-end"]
 WORKDIR /raffle/raffle-back-end
 COPY --from=builder-front /usr/src/app/build/ ./public/
