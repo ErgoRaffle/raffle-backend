@@ -14,9 +14,12 @@ import java.security.MessageDigest
 
 import org.ergoplatform.ErgoAddress
 import sigmastate.serialization.ErgoTreeSerializer
+import network.GetRequest
+import play.api.Logger
 
 @Singleton
 class Utils @Inject()(client: Client, explorer: Explorer) {
+  private val logger: Logger = Logger(this.getClass)
 
   def getStackTraceStr(e: Throwable): String = {
     val sw = new StringWriter
@@ -98,4 +101,21 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
       transaction.hcursor.downField("inputs").as[List[Json]].getOrElse(throw new Throwable("bad request")).toArray.apply(inputIndex).hcursor.downField("boxId").as[String].getOrElse(throw new Throwable("bad request")) == box.getId.toString
     })
   }
+
+  final case class InvalidRecaptchaException(private val message: String = "Invalid recaptcha") extends Throwable(message)
+
+  def verifyRecaptcha(response: String): Unit = {
+    try{
+      val res = GetRequest.httpGet(s"https://www.google.com/recaptcha/api/siteverify?secret=${Configs.recaptchaKey}&response=${response}")
+
+      if (res.hcursor.downField("success").as[Boolean].getOrElse(new Throwable("parse error")) == false) {
+        logger.info(s"response of google ${res}")
+        throw new InvalidRecaptchaException
+      }
+    } catch {
+      case _: InvalidRecaptchaException => throw new InvalidRecaptchaException
+      case _: Throwable => throw new Throwable("problem in verify recaptcha")
+    }
+  }
+
 }

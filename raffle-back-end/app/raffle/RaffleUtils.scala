@@ -73,42 +73,6 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, ra
     })
   }
 
-  def createService(): String = {
-    client.getClient.execute(ctx => {
-      val prover = ctx.newProverBuilder()
-        .withDLogSecret(Configs.serviceSecret)
-        .build()
-
-      val txB = ctx.newTxBuilder()
-      val serviceContract = ctx.compileContract(
-        ConstantsBuilder.create()
-          .item("servicePubKey", Configs.serviceAddress.getPublicKey)
-          .build(),
-        raffleContract.raffleServiceScript)
-
-      val listBoxes = ctx.getUnspentBoxesFor(Configs.serviceAddress, 0, 100)
-      val serviceBox: InputBox = listBoxes.asScala.filter(box => box.getValue >= 9000000000L).head
-      println("serviceBox value: " + serviceBox.getValue)
-
-      val out = txB.outBoxBuilder()
-        .contract(serviceContract)
-        .tokens(new ErgoToken(serviceBox.getId, 1000000000000000000L))
-        .value(serviceBox.getValue - Configs.fee)
-        .build()
-
-      val tx = txB.boxesToSpend(Seq(serviceBox).asJava)
-        .fee(Configs.fee)
-        .outputs(out)
-        .sendChangeTo(Configs.serviceAddress.getErgoAddress)
-        .build()
-
-      val signedTx = prover.sign(tx)
-
-      val txId = ctx.sendTransaction(signedTx)
-      println("tokenId: " + serviceBox.getId)
-      return txId
-    })
-  }
 
   def isReady(raffle: ActiveRaffle): Boolean ={
     client.getClient.execute(ctx => {
