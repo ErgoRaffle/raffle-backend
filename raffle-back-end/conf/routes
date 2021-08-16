@@ -1,11 +1,10 @@
 # Routes
 # This file defines all application routes (Higher priority routes first)
 
-GET     /api/                                        controllers.HomeController.index
+GET     /                                            controllers.HomeController.index
 GET     /api/raffle                                  controllers.HomeController.getRaffles(offset: Int ?= 0, limit: Int ?= 100)
 GET     /api/raffle/:tokenId                         controllers.HomeController.getRafflesByTokenId(tokenId: String)
 POST    /api/raffle/add                              controllers.HomeController.addRaffle
-GET     /api/service/start                           controllers.HomeController.createService()
 POST    /api/raffle/donate                           controllers.HomeController.donateToId
 GET     /api/raffle_share                            controllers.HomeController.servicePercent()
 GET     /api/*file                                   controllers.HomeController.assetOrDefault(file)

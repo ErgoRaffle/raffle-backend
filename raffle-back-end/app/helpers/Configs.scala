@@ -33,6 +33,8 @@ object Configs extends ConfigHelper {
   lazy val raffleThreadInterval: Int = readKey("raffleThreadInterval").toInt
   lazy val searchThreadInterval: Int = readKey("searchThreadInterval").toInt
 
+  lazy val recaptchaKey: String = readKey("recaptchaKey")
+
   object token {
     lazy val nft: String = readKey("raffle.token.nft")
     lazy val service: String = readKey("raffle.token.service")
