@@ -19,11 +19,17 @@ RUN apt-get update && \
 
 WORKDIR /raffle
 
+RUN wget https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-21.1.0/graalvm-ce-java8-linux-amd64-21.1.0.tar.gz && \
+    tar -xf graalvm-ce-java8-linux-amd64-21.1.0.tar.gz
+ENV JAVA_HOME="/raffle/graalvm-ce-java8-21.1.0"
+ENV PATH="${JAVA_HOME}/bin:$PATH"
+
+
 ADD ["./raffle-back-end", "/raffle/raffle-back-end"]
 WORKDIR /raffle/raffle-back-end
 COPY --from=builder-front /usr/src/app/build/ ./public/
 RUN sbt assembly
-RUN mv `find . -name getinplay_2.12-*.jar` /ergo-raffle.jar
+RUN mv `find . -name ErgoRaffle-*.jar` /ergo-raffle.jar
 CMD ["java", "-jar", "/ergo-raffle.jar"]
 
 FROM openjdk:8-jre-slim
