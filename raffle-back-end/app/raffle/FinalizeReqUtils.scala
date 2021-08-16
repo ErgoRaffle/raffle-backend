@@ -134,7 +134,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
     prover.sign(tx)
   }
 
-  /** ******************************* WINNER FUNCTIONS ***************************************** */
+  /** ******************************* FAIL FUNCTIONS ***************************************** */
   def failRaffle(ctx: BlockchainContext, raffleBox: InputBox): SignedTransaction = {
     val txB = ctx.newTxBuilder()
     val prover = ctx.newProverBuilder()
@@ -182,7 +182,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
         raffleBox.getRegisters.get(3),
       ).build()
     val donationRefund = txB.outBoxBuilder()
-      .value(refundValue - Configs.fee)
+      .value(refundValue)
       .contract(new ErgoTreeContract(refundAddress.script))
       .build()
     val tx = txB.boxesToSpend(Seq(raffleBox, donation).asJava)

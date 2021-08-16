@@ -128,7 +128,7 @@ class RaffleContract @Inject()(){
        |          INPUTS(1).id == SELF.id,
        |          INPUTS.size == 2,
        |          OUTPUTS(1).propositionBytes == SELF.R4[Coll[Byte]].get,
-       |          OUTPUTS(1).value == SELF.R5[Coll[Long]].get(3) * SELF.tokens(0)._2 - fee
+       |          OUTPUTS(1).value == SELF.R5[Coll[Long]].get(3) * SELF.tokens(0)._2
        |        )
        |      )
        |    )
