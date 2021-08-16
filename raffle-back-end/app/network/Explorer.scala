@@ -17,10 +17,7 @@ class Explorer() {
   private val unspentBoxesByTokenId = s"$baseUrlV1/boxes/unspent/byTokenId"
   private val boxesP1 = s"$tx/boxes"
   private val mempoolTransactions = s"$baseUrlV1/mempool/transactions/byAddress/"
-  /**
-   * @param txId transaction id
-   * @return transaction if it is unconfirmed
-   */
+
   def getAddressMempoolTransactions(address: String): Json = try {
     GetRequest.httpGet(s"$mempoolTransactions/$address")
   }
@@ -28,6 +25,10 @@ class Explorer() {
     case _: Throwable => Json.Null
   }
 
+  /**
+   * @param txId transaction id
+   * @return transaction if it is unconfirmed
+   */
   def getUnconfirmedTx(txId: String): Json = try {
     GetRequest.httpGet(s"$unconfirmedTx/$txId")
   }
