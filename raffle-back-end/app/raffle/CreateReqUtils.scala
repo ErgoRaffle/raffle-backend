@@ -1,20 +1,20 @@
 package raffle
 
 import java.util.Calendar
+
 import org.ergoplatform.appkit.impl.ScalaBridge
 import org.ergoplatform.restapi.client.ErgoTransaction
-
 import dao.CreateReqDAO
 import helpers.{Configs, Utils}
 import io.circe.{Json, parser}
 import network.{Client, Explorer}
-
 import javax.inject.Inject
 import models.CreateReq
 import org.ergoplatform.appkit.impl.{ErgoTreeContract, InputBoxImpl}
 import org.ergoplatform.appkit.{Address, BlockchainContext, ConstantsBuilder, ErgoId, ErgoToken, ErgoType, ErgoValue, InputBox, JavaHelpers, SignedTransaction}
 import scorex.crypto.hash.Digest32
 import io.circe.syntax._
+import play.api.Logger
 import special.collection.{Coll, CollOverArray}
 
 import scala.collection.JavaConverters._
@@ -23,20 +23,7 @@ import scala.util.control.Breaks.{break, breakable}
 
 class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, raffleContract: RaffleContract, addresses: Addresses,
                                createReqDAO: CreateReqDAO) {
-  var serviceBox: InputBox = _
-
-  def updateServiceBox() = {
-    client.getClient.execute(ctx => {
-      val listBoxes = ctx.getUnspentBoxesFor(Configs.serviceAddress, 0, 100)
-      println(listBoxes.size)
-      for (i <- 0 until listBoxes.size()) {
-        if (listBoxes.get(i).getTokens.size() >= 1 && listBoxes.get(i).getTokens.get(0).getId.toString == Configs.serviceTokenId
-          && listBoxes.get(i).getTokens.get(0).getValue >= 100000000L) {
-          serviceBox = listBoxes.get(i)
-        }
-      }
-    })
-  }
+  private val logger: Logger = Logger(this.getClass)
 
   def CreateRaffleProxyAddress(pk: String, charityPercent: Int, name: String, description: String, deadlineHeight: Long,
                                charityAddr: String, goal: Long, ticketPrice: Long): String = {
@@ -109,7 +96,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         .sendChangeTo(Address.create(req.walletAddress).getErgoAddress)
         .build()
       val signedCreateTx = prover.sign(raffleCreateTx)
-      println("raffle created and sent to network waiting to merge tokens to it")
+      logger.debug("raffle created and sent to network waiting to merge tokens to it")
       signedCreateTx
     })
   }
@@ -163,15 +150,15 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
     else if (req.state == 1 || req.state == 2) {
       // TODO: Update the code to query the database and check chained service box
       //      if (req.newServiceBox == serviceBox.getId.toString) return true
-      //      println("Service Box have Changed, Transaction should be created with new box.")
-      //      println("new service box: ", relatedServiceBox, "old service box: ", serviceBox)
+      //      logger.debug("Service Box have Changed, Transaction should be created with new box.")
+      //      logger.debug("new service box: ", relatedServiceBox, "old service box: ", serviceBox)
       return false
     }
     false
   }
 
   def update(req: CreateReq): Unit = {
-    println("updating the request")
+    logger.debug("updating the request")
     if (req.state == 0) {
       //      val signedTxJson: Option[String] = raffleTokenIssue(req)
       //      addRaffle(req, signedTxJson)

@@ -2,7 +2,6 @@ package raffle
 
 import helpers.{Configs, Utils}
 import io.circe.Json
-import models.RefundReq
 import network.{Client, Explorer}
 import org.ergoplatform.appkit.impl.ErgoTreeContract
 import org.ergoplatform.appkit._

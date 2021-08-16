@@ -1,6 +1,5 @@
 package raffle
 
-import java.nio.charset.StandardCharsets
 import java.util.Calendar
 
 import dao.DonateReqDAO
@@ -12,14 +11,12 @@ import network.{Client, Explorer}
 import org.ergoplatform.ErgoAddress
 import org.ergoplatform.appkit.{Address, BlockchainContext, ConstantsBuilder, ErgoId, ErgoToken, ErgoValue, InputBox}
 import org.ergoplatform.appkit.impl.ErgoTreeContract
-import scorex.crypto.hash.Digest32
 import special.collection.{Coll, CollOverArray}
-import ContractTypeEnum._
 import play.api.Logger
 
 import scala.collection.mutable.Seq
 import scala.collection.JavaConverters._
-import scala.util.Try
+
 
 class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, raffleContract: RaffleContract,
                                donateReqDAO: DonateReqDAO, addresses: Addresses){
@@ -27,36 +24,10 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
 
   def findRaffleBox(tokenId: String): InputBox ={
     client.getClient.execute((ctx: BlockchainContext) => {
-      var raffleBoxId: String = ""
-      while(raffleBoxId == ""){
-        val raffleBoxJson = explorer.getUnspentTokenBoxes(Configs.token.service, 0, 10)
-        raffleBoxId = raffleBoxJson.hcursor.downField("items").as[List[Json]].getOrElse(null)
-          .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).size > 1)
-          .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null)(1)
-            .hcursor.downField("tokenId").as[String].getOrElse("") == tokenId).head
-          .hcursor.downField("boxId").as[String].getOrElse("")
-      }
-
-      var raffleBox = ctx.getBoxesById(raffleBoxId).head
-      val serviceAddress = Configs.addressEncoder.fromProposition(raffleBox.getErgoTree).get.toString
-      val mempool = explorer.getAddressMempoolTransactions(serviceAddress)
-      try {
-        val txs = mempool.hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request"))
-        var txMap: Map[String, Json] = Map()
-        txs.foreach(txJson => {
-          val txServiceInput = txJson.hcursor.downField("inputs").as[List[Json]].getOrElse(throw new Throwable("bad response from explorer")).head
-          val id = txServiceInput.hcursor.downField("boxId").as[String].getOrElse("")
-          txMap += (id -> txJson)
-        })
-        val keys = txMap.keys.toSeq
-        while (keys.contains(raffleBox.getId.toString)) {
-          val tmpTx = ctx.signedTxFromJson(txMap(raffleBox.getId.toString).toString())
-          raffleBox = tmpTx.getOutputsToSpend.get(0)
-        }
-      } catch {
-        case e: Throwable => logger.error(e.toString)
-      }
-      raffleBox
+      val raffleAdd = Configs.addressEncoder.fromProposition(addresses.getRaffleActiveContract().getErgoTree).get
+      val raffleBoxList = ctx.getCoveringBoxesFor(Address.create(raffleAdd.toString), Configs.infBoxVal).getBoxes
+      raffleBoxList.asScala.filter(_.getTokens.size() > 1)
+        .filter(_.getTokens.get(1).getId.toString == tokenId).head
     })
   }
 

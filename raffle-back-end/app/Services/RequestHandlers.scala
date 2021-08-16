@@ -6,9 +6,9 @@ import helpers.{Configs, Utils}
 import javax.inject.Inject
 import network.Client
 import play.api.Logger
-import raffle.{CreateReqUtils, DonateReqUtils, RaffleUtils, FinalizeReqUtils}
-import dao.{ActiveRafflesDAO, CreateReqDAO, DonateReqDAO}
-import models.{ActiveRaffle, CreateReq, DonateReq, RefundReq}
+import raffle.{CreateReqUtils, DonateReqUtils, FinalizeReqUtils}
+import dao.{CreateReqDAO, DonateReqDAO}
+import models.{CreateReq, DonateReq}
 
 import scala.concurrent._
 import ExecutionContext.Implicits.global
@@ -18,8 +18,7 @@ class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO,
   private val logger: Logger = Logger(this.getClass)
 
   def handleReqs(): Unit = {
-    println("Task is running ....")
-    logger.info("Handling requests...")
+    logger.info("Handling Creation requests...")
     val currentTime = Calendar.getInstance().getTimeInMillis / 1000
 
     createReqDAO.all.map(reqs => {
@@ -28,8 +27,8 @@ class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO,
           if (req.ttl <= currentTime || req.state == 3) {
             handleRemoval(req)
           } else {
-            println("Handling Creation Request with id: "+ req.id)
-            println("Current Time: "+currentTime+", Request timeout: "+req.timeOut+", Request ttl: "+req.ttl)
+            logger.debug("Handling Creation Request with id: "+ req.id)
+            logger.debug("Current Time: "+currentTime+", Request timeout: "+req.timeOut+", Request ttl: "+req.ttl)
             handleReq(req)
           }
         } catch {
@@ -54,12 +53,12 @@ class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO,
     if(createReqUtils.isReady(req) || req.timeOut <= currentTime){
       createReqDAO.updateTimeOut(req.id, currentTime + Configs.checkingDelay)
       req2 = createReqDAO.byId(req.id)
-      println("Request is Ready, Executing the request with state: "+ req2.state)
+      logger.debug("Request is Ready, Executing the request with state: "+ req2.state)
       //      updateServiceBox()
       if(!createReqUtils.isValid(req2)){
         createReqUtils.update(req2)
         req2 = createReqDAO.byId(req2.id)
-        println("Request updated, with state: "+ req2.state)
+        logger.debug("Request updated, with state: "+ req2.state)
       }
       createReqUtils.nextStage(req2)
     }
@@ -118,52 +117,8 @@ class RefundReqHandler@Inject ()(client: Client, utils: Utils, refundReqUtils: F
   private val logger: Logger = Logger(this.getClass)
 
   def handleReqs(): Unit = {
-    println("Finalize handling is in process ....")
+    logger.debug("Finalize handling is in process ....")
     logger.info("Handling finalize process...")
     refundReqUtils.Refund()
-  }
-}
-
-
-class ActiveRaffleHandler@Inject ()(client: Client, activeRafflesDAO: ActiveRafflesDAO,
-                                 utils: Utils, raffleUtils: RaffleUtils){
-  private val logger: Logger = Logger(this.getClass)
-
-  def handle(): Unit = {
-    println("Active Raffle checking is in process ....")
-    logger.info("Handling requests...")
-    val currentTime = Calendar.getInstance().getTimeInMillis / 1000
-
-    activeRafflesDAO.all.map(raffles => {
-      raffles.foreach(raffle => {
-        try {
-          if (raffle.state == 10) {
-            handleRemoval(raffle)
-          } else {
-            handleReq(raffle)
-          }
-        } catch {
-          case e: Throwable => e.printStackTrace()
-            logger.error(e.getMessage)
-        }
-      })
-    }) recover {
-      case e: Throwable => logger.error(utils.getStackTraceStr(e))
-    }
-  }
-
-  def handleRemoval(raffle: ActiveRaffle): Unit = {
-    logger.info(s"will remove request: ${raffle.id} with state: ${raffle.state}")
-    activeRafflesDAO.deleteById(raffle.id)
-  }
-
-  def handleReq(raffle: ActiveRaffle): Unit = {
-    val currentTime = Calendar.getInstance().getTimeInMillis / 1000
-
-    if(raffleUtils.isReady(raffle) || raffle.timeOut <= currentTime){
-      val raffle2 = activeRafflesDAO.byId(raffle.id)
-      activeRafflesDAO.updateTimeOut(raffle.id, currentTime + Configs.checkingDelay)
-      raffleUtils.nextStage(raffle2)
-    }
   }
 }
