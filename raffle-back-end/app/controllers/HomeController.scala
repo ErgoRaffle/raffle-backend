@@ -84,17 +84,6 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
               ("charityPercent", Json.fromLong(charityPercent)),
               ("minToRaise", Json.fromLong(goal)),
             ))
-//            raffles = raffles +
-//              s"""{
-//                 | "id" : "$id",
-//                 | "name" : "$name",
-//                 | "description" : "$description",
-//                 | "deadline" : $deadlineHeight,
-//                 | "winnerPercent" : $winnerPercent,
-//                 | "charityPercent" : $charityPercent,
-//                 | "minToRaise" : $goal
-//           }""".stripMargin
-//            raffles = raffles + ",\n"
           }
         }
       }
@@ -102,7 +91,6 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       boxes = explorer.getUnspentTokenBoxes(Configs.token.service, explorerOffset, 100)
     }
     try {
-//      if (raffles != "") raffles = raffles.substring(0, raffles.length-2)
       val currentHeight: Long = client.getHeight
       var totalRaffles = 0
       if(raffleCount > limit+offset) totalRaffles = limit

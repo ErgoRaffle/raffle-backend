@@ -6,9 +6,7 @@ import javax.inject.{Inject, Singleton}
 import com.typesafe.config.ConfigFactory
 import io.circe.Json
 import network.{Client, Explorer}
-import org.ergoplatform.ErgoAddress
 import org.ergoplatform.appkit.{Address, BlockchainContext, ErgoType, ErgoValue, InputBox, JavaHelpers}
-import sigmastate.serialization.ErgoTreeSerializer
 import special.collection.Coll
 import java.security.MessageDigest
 
@@ -29,7 +27,6 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
   }
 
   def getAPILink(APIName: String): String = {
-//    return ConfigFactory.load().getString(s"API.${APIName}")
     return ConfigFactory.load().getString("API.unspentBoxesAPILink")
   }
 
@@ -89,7 +86,7 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
 //          serviceBox = tmpTx.getOutputsToSpend.get(0)
 //        }
 //      } catch {
-//        case e: Throwable => println(e)
+//        case e: Throwable => logger.debug(e)
 //      }
       serviceBox
     })

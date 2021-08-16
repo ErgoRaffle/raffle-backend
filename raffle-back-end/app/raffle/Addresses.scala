@@ -166,7 +166,6 @@ class Addresses @Inject()(client: Client, explorer: Explorer, utils: Utils, cont
   def getRaffleCreateProxyContract(pk: String, charity: Long, name: String, description: String, deadlineHeight: Long,
                                    charityAddr: String, goal: Long, ticketPrice: Long): String = {
     client.getClient.execute((ctx: BlockchainContext) => {
-      println(s"pk: $pk")
       val proxyContract = ctx.compileContract(ConstantsBuilder.create()
         .item("PK", Address.create(pk).getPublicKey)
         .item("charityCoef", charity)
