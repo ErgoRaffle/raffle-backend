@@ -254,7 +254,9 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
   }
 
   def servicePercent(): Action[AnyContent] = Action {
-    val p = Configs.servicePercent
+//    val p = Configs.servicePercent
+    val serviceBox = utils.getServiceBox()
+    val p = serviceBox.getRegisters.get(0).asInstanceOf[Long]
     Ok(
       s"""{
         | "z" : $p
