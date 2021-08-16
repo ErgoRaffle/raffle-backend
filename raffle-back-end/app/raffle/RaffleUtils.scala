@@ -1,30 +1,24 @@
 package raffle
 
+import dao.ActiveRafflesDAO
 import helpers.{Configs, Utils}
 import io.circe.Json
+import models.ActiveRaffle
 import network.{Client, Explorer}
-
-import special.collection.Coll
 import org.ergoplatform.appkit._
 import org.ergoplatform.appkit.impl.ErgoTreeContract
-import java.nio.charset.StandardCharsets
-import java.util.Calendar
-
-import dao.{ActiveRafflesDAO, RefundReqDAO}
-import javax.inject.Inject
-import models.ActiveRaffle
 import play.api.Logger
 import sigmastate.serialization.ErgoTreeSerializer
+import special.collection.Coll
 
+import javax.inject.Inject
 import scala.collection.JavaConverters._
 import scala.collection.mutable.Seq
-import scala.concurrent._
-import scala.concurrent.duration.Duration
 import scala.util.control.Breaks.{break, breakable}
 
 
 class RaffleUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, raffleContract: RaffleContract,
-                            activeRafflesDAO: ActiveRafflesDAO, refundReqDAO: RefundReqDAO) {
+                            activeRafflesDAO: ActiveRafflesDAO) {
   private val logger: Logger = Logger(this.getClass)
 
   def findRecentBox(address: String, tokenId: String): InputBox ={
@@ -129,41 +123,6 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, ra
         if(raffleBox == null) activeRafflesDAO.updateStateById(raffle.id, 10)
       }
       false
-    })
-  }
-
-  def raffleFinishProcess(raffle: ActiveRaffle): Unit = {
-    client.getClient.execute(ctx => {
-      val boxes = ctx.getUnspentBoxesFor(Address.create(raffle.raffleAddress), 0, 100)
-      val raffleBox: InputBox = boxes.asScala.filter(box => box.getTokens.get(1).getId.toString == Configs.serviceTokenId)
-        .filter(box => box.getTokens.get(0).getId.toString == raffle.raffleToken).head
-
-      if(raffleBox.getValue >= raffle.minToRaise * 1000000){
-        activeRafflesDAO.updateStateById(raffle.id, 1)
-      }
-      else {
-        var response = explorer.getUnspentTokenBoxes(Configs.serviceTokenId, 1, 100)
-        var items = response.hcursor.downField("items").as[List[Json]].getOrElse(null)
-
-        var c: Int = 1
-        while (items != null && items.nonEmpty) {
-          items.foreach(box => {
-            val address = box.hcursor.downField("address").as[String].getOrElse("")
-            val asset = box.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).head
-            val id = asset.hcursor.downField("tokenId").as[String].getOrElse("")
-            if (id == raffle.raffleToken && address != raffle.raffleAddress) {
-              val ticketCount: Long = asset.hcursor.downField("amount").as[Long].getOrElse(0)
-              val boxId = box.hcursor.downField("boxId").as[String].getOrElse("")
-              refundReqDAO.insert(ticketCount, raffle.ticketPrice, 0, raffle.raffleAddress, raffle.raffleToken,
-                null, boxId, 0)
-            }
-          })
-          response = explorer.getUnspentTokenBoxes(Configs.serviceTokenId, c*100, 100)
-          items = response.hcursor.downField("items").as[List[Json]].getOrElse(null)
-          c += 1
-        }
-        activeRafflesDAO.updateStateById(raffle.id, 8)
-      }
     })
   }
 
@@ -320,8 +279,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, ra
   }
 
   def nextStage(raffle: ActiveRaffle): Unit ={
-    if(raffle.state == 0) raffleFinishProcess(raffle)
-    else if(raffle.state == 1 || raffle.state == 2) winnerAnnouncement(raffle)
+    if(raffle.state == 1 || raffle.state == 2) winnerAnnouncement(raffle)
     else if(raffle.state == 3) winnerFund(raffle)
     else if(raffle.state == 9) destroyAfterRefund(raffle)
   }

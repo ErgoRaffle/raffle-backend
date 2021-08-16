@@ -1,6 +1,5 @@
 package raffle
 
-import dao.RefundReqDAO
 import helpers.{Configs, Utils}
 import io.circe.Json
 import models.RefundReq
@@ -13,9 +12,10 @@ import javax.inject.Inject
 import scala.collection.JavaConverters._
 
 
-class FinalizeReqUtils @Inject()(client: Client, refundReqDAO: RefundReqDAO, explorer: Explorer,
+class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
                                  addresses: Addresses, utils: Utils) {
 
+  /** ******************************* SUCESS FUNCTIONS ***************************************** */
   def completeRaffle(ctx: BlockchainContext, raffleBox: InputBox): SignedTransaction = {
     // first box is raffle winner box
     // second box is charity box
@@ -134,6 +134,7 @@ class FinalizeReqUtils @Inject()(client: Client, refundReqDAO: RefundReqDAO, exp
     prover.sign(tx)
   }
 
+  /** ******************************* WINNER FUNCTIONS ***************************************** */
   def failRaffle(ctx: BlockchainContext, raffleBox: InputBox): SignedTransaction = {
     val txB = ctx.newTxBuilder()
     val prover = ctx.newProverBuilder()
@@ -192,15 +193,32 @@ class FinalizeReqUtils @Inject()(client: Client, refundReqDAO: RefundReqDAO, exp
     prover.sign(tx)
   }
 
-  def processCompletedRaffle(ctx: BlockchainContext, raffle: InputBox): Boolean = {
-    val tx = completeRaffle(ctx, raffle)
-    ctx.sendTransaction(tx)
-    val tx2 = withdrawReward(ctx, utils.getServiceBox(), tx.getOutputsToSpend.get(0))
-    ctx.sendTransaction(tx2)
-    true
+  def redeemFailedRaffleToken(ctx: BlockchainContext, serviceBox: InputBox, raffleBox: InputBox): SignedTransaction = {
+    val txB = ctx.newTxBuilder()
+    val prover = ctx.newProverBuilder()
+      .withDLogSecret(Configs.serviceSecret)
+      .build()
+    val serviceOut = txB.outBoxBuilder()
+      .value(serviceBox.getValue)
+      .contract(addresses.getRaffleServiceContract())
+      .tokens(
+        serviceBox.getTokens.get(0),
+        new ErgoToken(serviceBox.getTokens.get(1).getId, serviceBox.getTokens.get(1).getValue + raffleBox.getTokens.get(0).getValue)
+      )
+      .registers(
+        serviceBox.getRegisters.get(0),
+        serviceBox.getRegisters.get(1),
+      ).build()
+    val tx = txB.boxesToSpend(Seq(serviceBox, raffleBox).asJava)
+      .fee(Configs.fee)
+      .outputs(serviceOut)
+      .tokensToBurn(new ErgoToken(raffleBox.getTokens.get(1).getId, raffleBox.getTokens.get(1).getValue))
+      .sendChangeTo(Configs.serviceAddress.getErgoAddress)
+      .build()
+    prover.sign(tx)
   }
 
-  def processRefundRaffle(ctx: BlockchainContext, raffle: InputBox): Unit ={
+  def processRefundRaffle(ctx: BlockchainContext, raffle: InputBox): Boolean = {
     var remain = true
     var offset = 0
     var newRaffle = raffle
@@ -221,13 +239,24 @@ class FinalizeReqUtils @Inject()(client: Client, refundReqDAO: RefundReqDAO, exp
       offset += 100
       remain = boxes.nonEmpty
     }
+    val tx = ctx.sendTransaction(redeemFailedRaffleToken(ctx, utils.getServiceBox(), raffle))
+    true
+  }
 
+  /** ******************************* GROUP PROCESS FUNCTIONS ***************************************** */
+
+  def processCompletedRaffle(ctx: BlockchainContext, raffle: InputBox): Boolean = {
+    val tx = completeRaffle(ctx, raffle)
+    ctx.sendTransaction(tx)
+    val tx2 = withdrawReward(ctx, utils.getServiceBox(), tx.getOutputsToSpend.get(0))
+    ctx.sendTransaction(tx2)
+    true
   }
 
   def processFailedRaffle(ctx: BlockchainContext, raffle: InputBox): Boolean = {
     val failTx = failRaffle(ctx, raffle)
     ctx.sendTransaction(failTx)
-    processFailedRaffle(ctx, failTx.getOutputsToSpend.get(0))
+    processRefundRaffle(ctx, failTx.getOutputsToSpend.get(0))
     true
   }
 
@@ -248,47 +277,45 @@ class FinalizeReqUtils @Inject()(client: Client, refundReqDAO: RefundReqDAO, exp
     }
   }
 
-  def processActiveRaffles(ctx: BlockchainContext): Unit ={
+  def processActiveRaffles(ctx: BlockchainContext): Unit = {
     var remain = true
     var offset = 0
     while (remain) {
-      remain = ctx.getUnspentBoxesFor(Address.create(addresses.getRaffleActiveContract().getErgoScript), offset, 100).asScala.filter(box => {
-        box.getRegisters.get(0).asInstanceOf[Coll[Long]].toArray(4) < ctx.getHeight
-      }).map(raffle => this.processSingleRaffle(ctx, raffle)).nonEmpty
+      remain = false
+      ctx.getUnspentBoxesFor(Address.create(Configs.addressEncoder.fromProposition(addresses.getRaffleActiveContract().getErgoTree).get.toString), offset, 100).asScala.filter(box => {
+        remain = true
+        box.getRegisters.get(0).getValue.asInstanceOf[Coll[Long]].toArray(4) < ctx.getHeight
+      }).map(raffle => this.processSingleRaffle(ctx, raffle))
       offset += 100
     }
-  }
-
-  def processBoxForAddress(ctx: BlockchainContext, contract: ErgoTreeContract, callBack: (BlockchainContext, InputBox) => Unit): Unit = {
-    var remain = true
-    var offset = 0
-    while (remain) {
-      remain = ctx.getUnspentBoxesFor(Address.create(contract.getErgoScript), offset, 100).asScala.map(
-        raffle => callBack(ctx, raffle)
-      ).nonEmpty
-      offset += 100
-    }
-
   }
 
   def processRefundRaffles(ctx: BlockchainContext): Unit = {
     var remain = true
     var offset = 0
     while (remain) {
-      remain = ctx.getUnspentBoxesFor(Address.create(addresses.getRaffleRedeemContract().getErgoScript), offset, 100).asScala.map(raffle => {
-        this.processSingleRaffle(ctx, raffle)
+      remain = ctx.getUnspentBoxesFor(
+        Address.create(Configs.addressEncoder.fromProposition(addresses.getRaffleRedeemContract().getErgoTree).get.toString),
+        offset,
+        100
+      ).asScala.map(raffle => {
+        if (!utils.isBoxInMemPool(raffle, 1)) {
+          processRefundRaffle(ctx, raffle)
+        } else {
+          false
+        }
       }).nonEmpty
       offset += 100
     }
   }
 
-  def processWinnerRaffle(ctx: BlockchainContext): Unit ={
+  def processWinnerRaffle(ctx: BlockchainContext): Unit = {
     var remain = true
     var offset = 0
     var serviceBox = utils.getServiceBox()
     while (remain) {
-      remain = ctx.getUnspentBoxesFor(Address.create(addresses.getRaffleWinnerContract().getErgoScript), offset, 100).asScala.map(raffle => {
-        if(!utils.isBoxInMemPool(raffle, 1)){
+      remain = ctx.getUnspentBoxesFor(Address.create(Configs.addressEncoder.fromProposition(addresses.getRaffleWinnerContract().getErgoTree).get.toString), offset, 100).asScala.map(raffle => {
+        if (!utils.isBoxInMemPool(raffle, 1)) {
           val tx = withdrawReward(ctx, serviceBox, raffle)
           ctx.sendTransaction(tx)
           serviceBox = tx.getOutputsToSpend.get(0)
@@ -298,22 +325,12 @@ class FinalizeReqUtils @Inject()(client: Client, refundReqDAO: RefundReqDAO, exp
       offset += 100
     }
   }
+
   def Refund(): Unit = {
     client.getClient.execute((ctx: BlockchainContext) => {
       processActiveRaffles(ctx)
       processRefundRaffles(ctx)
       processWinnerRaffle(ctx)
-    })
-  }
-
-  def isReady(req: RefundReq): Boolean = {
-    client.getClient.execute(ctx => {
-      if (req.state == 0) true
-      else {
-        val ticketBox = ctx.getBoxesById(req.ticketBoxId).head
-        if (ticketBox == null) refundReqDAO.updateStateById(req.id, 2)
-        return false
-      }
     })
   }
 }

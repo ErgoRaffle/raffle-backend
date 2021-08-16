@@ -74,32 +74,41 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
       val serviceBoxId = serviceBoxJson.hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request")).head.hcursor.downField("boxId").as[String].getOrElse("")
       var serviceBox = ctx.getBoxesById(serviceBoxId).head
       val serviceAddress = Configs.addressEncoder.fromProposition(serviceBox.getErgoTree).get.toString
-      val mempool = explorer.getAddressMempoolTransactions(serviceAddress)
-      try {
-        val txs = mempool.hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request"))
-        var txMap: Map[String, Json] = Map()
-        txs.foreach(txJson => {
-          val txServiceInput = txJson.hcursor.downField("inputs").as[List[Json]].getOrElse(throw new Throwable("bad response from explorer")).head
-          val id = txServiceInput.hcursor.downField("boxId").as[String].getOrElse("")
-          txMap += (id -> txJson)
-        })
-        val keys = txMap.keys.toSeq
-        while (keys.contains(serviceBox.getId.toString)) {
-          val tmpTx = ctx.signedTxFromJson(txMap(serviceBox.getId.toString).toString())
-          serviceBox = tmpTx.getOutputsToSpend.get(0)
-        }
-      } catch {
-        case e: Throwable => println(e)
-      }
+//      val mempool = explorer.getAddressMempoolTransactions(serviceAddress)
+//      try {
+//        val txs = mempool.hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request"))
+//        var txMap: Map[String, Json] = Map()
+//        txs.foreach(txJson => {
+//          val txServiceInput = txJson.hcursor.downField("inputs").as[List[Json]].getOrElse(throw new Throwable("bad response from explorer")).head
+//          val id = txServiceInput.hcursor.downField("boxId").as[String].getOrElse("")
+//          txMap += (id -> txJson)
+//        })
+//        val keys = txMap.keys.toSeq
+//        while (keys.contains(serviceBox.getId.toString)) {
+//          val tmpTx = ctx.signedTxFromJson(txMap(serviceBox.getId.toString).toString())
+//          serviceBox = tmpTx.getOutputsToSpend.get(0)
+//        }
+//      } catch {
+//        case e: Throwable => println(e)
+//      }
       serviceBox
     })
   }
 
-  def isBoxInMemPool(box: InputBox, inputIndex: Int) : Boolean = {
+  def isBoxInMemPool(box: InputBox, inputIndex: Int): Boolean = isBoxInMemPool(box, Seq(inputIndex))
+
+  def isBoxInMemPool(box: InputBox, inputIndexes: Seq[Int]) : Boolean = {
     val address = getAddress(box.getErgoTree.bytes)
-    explorer.getAddressMempoolTransactions(address.toString).hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request")).exists(transaction => {
-      transaction.hcursor.downField("inputs").as[List[Json]].getOrElse(throw new Throwable("bad request")).toArray.apply(inputIndex).hcursor.downField("boxId").as[String].getOrElse(throw new Throwable("bad request")) == box.getId.toString
-    })
+    val transactions = explorer.getAddressMempoolTransactions(address.toString)
+    if(transactions != Json.Null) {
+      explorer.getAddressMempoolTransactions(address.toString).hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request")).exists(transaction => {
+        inputIndexes.exists(inputIndex => {
+          transaction.hcursor.downField("inputs").as[List[Json]].getOrElse(throw new Throwable("bad request")).toArray.apply(inputIndex).hcursor.downField("boxId").as[String].getOrElse(throw new Throwable("bad request")) == box.getId.toString
+        })
+      })
+    }else{
+      false
+    }
   }
 
   final case class InvalidRecaptchaException(private val message: String = "Invalid recaptcha") extends Throwable(message)

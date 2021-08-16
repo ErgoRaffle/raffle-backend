@@ -11,12 +11,12 @@ import play.api.mvc._
 import raffle.{Addresses, CreateReqUtils, DonateReqUtils}
 import sigmastate.serialization.ErgoTreeSerializer
 import special.collection.Coll
-import java.nio.charset.StandardCharsets
 
+import java.nio.charset.StandardCharsets
 import javax.inject._
 import net.sf.ehcache.search.aggregator.Count
 
-import scala.collection.mutable.Seq
+import scala.collection.mutable.{ListBuffer, Seq}
 import scala.util.Try
 
 
@@ -44,7 +44,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
   def getRaffles(offset: Int, limit: Int) = Action { implicit request: Request[AnyContent] =>
     logger.info("Responding get raffles request")
     var raffleCount = 0
-    var raffles = ""
+    var raffles: ListBuffer[Json] = ListBuffer()
     var explorerOffset: Int = 0
     var boxes = explorer.getUnspentTokenBoxes(Configs.token.service, 0, 100)
     val total = boxes.hcursor.downField("total").as[Int].getOrElse(0)
@@ -75,18 +75,26 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
               .getValue.asInstanceOf[Coll[Coll[Byte]]].toArray
             val name: String = new String(strListByte(0).toArray, StandardCharsets.UTF_8)
             val description: String = new String(strListByte(1).toArray, StandardCharsets.UTF_8)
-
-            raffles = raffles +
-              s"""{
-                 | "id" : "$id",
-                 | "name" : "$name",
-                 | "description" : "$description",
-                 | "deadline" : $deadlineHeight,
-                 | "winnerPercent" : $winnerPercent,
-                 | "charityPercent" : $charityPercent,
-                 | "minToRaise" : $goal
-           }""".stripMargin
-            raffles = raffles + ",\n"
+            raffles += Json.fromFields(List(
+              ("id", Json.fromString(id)),
+              ("name", Json.fromString(name)),
+              ("description", Json.fromString(description)),
+              ("deadline", Json.fromLong(deadlineHeight)),
+              ("winnerPercent", Json.fromLong(winnerPercent)),
+              ("charityPercent", Json.fromLong(charityPercent)),
+              ("minToRaise", Json.fromLong(goal)),
+            ))
+//            raffles = raffles +
+//              s"""{
+//                 | "id" : "$id",
+//                 | "name" : "$name",
+//                 | "description" : "$description",
+//                 | "deadline" : $deadlineHeight,
+//                 | "winnerPercent" : $winnerPercent,
+//                 | "charityPercent" : $charityPercent,
+//                 | "minToRaise" : $goal
+//           }""".stripMargin
+//            raffles = raffles + ",\n"
           }
         }
       }
@@ -94,20 +102,18 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       boxes = explorer.getUnspentTokenBoxes(Configs.token.service, explorerOffset, 100)
     }
     try {
-      if (raffles != "") raffles = raffles.substring(0, raffles.length-2)
+//      if (raffles != "") raffles = raffles.substring(0, raffles.length-2)
       val currentHeight: Long = client.getHeight
       var totalRaffles = 0
       if(raffleCount > limit+offset) totalRaffles = limit
       else totalRaffles = raffleCount - offset
-      Ok(
-        s"""{
-            |  "items": [
-            |    $raffles
-            |  ],
-            |  "total": $totalRaffles,
-            |  "currentHeight" : $currentHeight
-            |}""".stripMargin
-        ).as("application/json")
+      val result = Json.fromFields(List(
+        ("items", Json.fromValues(raffles.toList)),
+        ("total", Json.fromInt(totalRaffles)),
+        ("currentHeight", Json.fromLong(currentHeight))
+      ))
+
+      Ok(result.toString()).as("application/json")
     } catch {
       case e: Throwable => exception(e)
     }
@@ -256,7 +262,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
   def servicePercent(): Action[AnyContent] = Action {
 //    val p = Configs.servicePercent
     val serviceBox = utils.getServiceBox()
-    val p = serviceBox.getRegisters.get(0).asInstanceOf[Long]
+    val p = serviceBox.getRegisters.get(0).getValue.asInstanceOf[Long]
     Ok(
       s"""{
         | "z" : $p

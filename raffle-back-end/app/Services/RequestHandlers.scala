@@ -7,7 +7,7 @@ import javax.inject.Inject
 import network.Client
 import play.api.Logger
 import raffle.{CreateReqUtils, DonateReqUtils, RaffleUtils, FinalizeReqUtils}
-import dao.{ActiveRafflesDAO, CreateReqDAO, DonateReqDAO, RefundReqDAO}
+import dao.{ActiveRafflesDAO, CreateReqDAO, DonateReqDAO}
 import models.{ActiveRaffle, CreateReq, DonateReq, RefundReq}
 
 import scala.concurrent._
@@ -114,47 +114,13 @@ class DonateReqHandler@Inject ()(client: Client, donateReqDAO: DonateReqDAO,
 }
 
 
-class RefundReqHandler@Inject ()(client: Client, refundReqDAO: RefundReqDAO,
-                                 utils: Utils, refundReqUtils: FinalizeReqUtils){
+class RefundReqHandler@Inject ()(client: Client, utils: Utils, refundReqUtils: FinalizeReqUtils){
   private val logger: Logger = Logger(this.getClass)
 
   def handleReqs(): Unit = {
-    println("Refund handling is in process ....")
-    logger.info("Handling requests...")
-    val currentTime = Calendar.getInstance().getTimeInMillis / 1000
-
-    refundReqDAO.all.map(reqs => {
-      reqs.foreach(req => {
-        try {
-          if (req.state == 2) {
-            handleRemoval(req)
-          } else {
-            println("Handling Donation Request with id: "+ req.id)
-            println("Current Time: "+currentTime+", Request timeout: "+req.timeOut)
-            handleReq(req)
-          }
-        } catch {
-          case e: Throwable => e.printStackTrace()
-            logger.error(e.getMessage)
-        }
-      })
-    }) recover {
-      case e: Throwable => logger.error(utils.getStackTraceStr(e))
-    }
-  }
-
-  def handleRemoval(req: RefundReq): Unit = {
-    logger.info(s"will remove request: ${req.id} with state: ${req.state}")
-    refundReqDAO.deleteById(req.id)
-  }
-
-  def handleReq(req: RefundReq): Unit = {
-    val currentTime = Calendar.getInstance().getTimeInMillis / 1000
-
-    if(refundReqUtils.isReady(req) || req.timeOut <= currentTime){
-      refundReqDAO.updateTimeOut(req.id, currentTime + Configs.checkingDelay)
-      refundReqUtils.Refund()
-    }
+    println("Finalize handling is in process ....")
+    logger.info("Handling finalize process...")
+    refundReqUtils.Refund()
   }
 }
 
