@@ -70,7 +70,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
     val tx = txB.boxesToSpend(Seq(raffleBox).asJava)
       .fee(Configs.fee)
       .outputs(newRaffleBox, charityBox, serviceBox)
-      .sendChangeTo(Configs.raffleProjectAddress.getErgoAddress)
+      .sendChangeTo(Configs.serviceAddress.getErgoAddress)
       .withDataInputs(Seq(box).asJava)
       .build()
     prover.sign(tx)
@@ -127,7 +127,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
       .tokensToBurn(
         new ErgoToken(raffleBox.getTokens.get(1).getId, raffleBox.getTokens.get(1).getValue + winnerTicketBox.getTokens.get(0).getValue)
       )
-      .sendChangeTo(Configs.raffleProjectAddress.getErgoAddress)
+      .sendChangeTo(Configs.serviceAddress.getErgoAddress)
       .outputs(serviceOutput, winnerOutput)
       .build()
     prover.sign(tx)

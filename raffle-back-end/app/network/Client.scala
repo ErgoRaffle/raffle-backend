@@ -11,7 +11,6 @@ import scala.collection.JavaConverters._
 @Singleton
 class Client @Inject()() {
   private val logger: Logger = Logger(this.getClass)
-  private val defaultHeader: Seq[(String, String)] = Seq[(String, String)](("Content-Type", "application/json"), ("api_key", Configs.nodeApiKey))
   private var client: ErgoClient = _
 
   /**
@@ -22,7 +21,7 @@ class Client @Inject()() {
   def setClient(): Long = {
     print("salam")
     try {
-      client = RestApiErgoClient.create(Configs.nodeUrl, Configs.networkType, Configs.nodeApiKey, Configs.explorerUrl)
+      client = RestApiErgoClient.create(Configs.nodeUrl, Configs.networkType, "", Configs.explorerUrl)
       client.execute(ctx => {
         ctx.getHeight
       })
