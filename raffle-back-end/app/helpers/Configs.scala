@@ -6,7 +6,6 @@ import org.ergoplatform.appkit.{Address, NetworkType}
 
 object Configs extends ConfigHelper {
   lazy val nodeUrl: String = readKey("node.url")
-  lazy val nodeApiKey: String = readKey("node.apiKey", "")
   lazy val networkType: NetworkType = if (readKey("node.networkType").toLowerCase.equals("mainnet")) NetworkType.MAINNET else NetworkType.TESTNET
   lazy val addressEncoder = new ErgoAddressEncoder(networkType.networkPrefix)
   lazy val explorerUrl: String = readKey("explorer.url")
