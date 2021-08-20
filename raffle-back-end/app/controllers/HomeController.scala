@@ -206,7 +206,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       val walletAddr: String = request.body.hcursor.downField("walletAddr").as[String].getOrElse(throw new Throwable("charityAddr field must exist"))
       val ticketPrice: Long = request.body.hcursor.downField("ticketPrice").as[Long].getOrElse(throw new Throwable("charityAddr field must exist"))
       val captcha: String = request.body.hcursor.downField("captcha").as[String].getOrElse("")
-      utils.verifyRecaptcha(captcha)
+      if(Configs.recaptchaKey != "not-set") utils.verifyRecaptcha(captcha)
       val paymentAddress = createReqUtils.CreateRaffleProxyAddress(walletAddr, charityPercent, name, description, deadlineHeight + client.getHeight, charityAddr, goal, ticketPrice)
       val amount = Configs.fee * 4
       val delay = Configs.creationDelay
@@ -230,14 +230,15 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     val ticketCounts: Long = request.body.hcursor.downField("ticketCounts").as[Long].getOrElse(throw new Throwable("erg field must exist"))
     val captcha: String = request.body.hcursor.downField("captcha").as[String].getOrElse("")
     try {
-      utils.verifyRecaptcha(captcha)
+      if(Configs.recaptchaKey != "not-set") utils.verifyRecaptcha(captcha)
       val response = donateReqUtils.findProxyAddress(walletAddr, raffleId, ticketCounts)
       val paymentAddress = response._1
       val fee = response._2
+      val deadline = Configs.creationDelay
 
       Ok(
         s"""{
-           | "deadline": 900,
+           | "deadline": $deadline,
            | "address": "$paymentAddress",
            | "fee" : $fee
            |}""".stripMargin
@@ -248,12 +249,23 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
   }
 
   def servicePercent(): Action[AnyContent] = Action {
-//    val p = Configs.servicePercent
     val serviceBox = utils.getServiceBox()
     val p = serviceBox.getRegisters.get(0).getValue.asInstanceOf[Long]
     Ok(
       s"""{
         | "z" : $p
         |}""".stripMargin).as("application/json")
+  }
+
+  def recaptchaKey(): Action[AnyContent] = Action {
+    val key = Configs.recaptchaPubKey
+    var required = ""
+    if(key == "not-set") required = "false"
+    else required = "true"
+    Ok(
+      s"""{
+         | "pubKey" : "$key",
+         | "required" : $required
+         |}""".stripMargin).as("application/json")
   }
 }

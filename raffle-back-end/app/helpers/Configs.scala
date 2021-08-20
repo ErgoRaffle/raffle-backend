@@ -23,7 +23,8 @@ object Configs extends ConfigHelper {
   lazy val donateThreadInterval: Int = readKey("donateThreadInterval").toInt
   lazy val refundThreadInterval: Int = readKey("refundThreadInterval").toInt
 
-  lazy val recaptchaKey: String = readKey("recaptchaKey")
+  lazy val recaptchaKey: String = readKey("recaptchaKey", default = "not-set")
+  lazy val recaptchaPubKey: String = readKey("recaptchaPubKey", default = "not-set")
 
   object token {
     lazy val nft: String = readKey("raffle.token.nft")
