@@ -101,7 +101,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
   }
 
   def withdrawReward(ctx: BlockchainContext, serviceBox: InputBox, raffleBox: InputBox): SignedTransaction = {
-    val winnerTicketBox = getWinner(ctx, raffleBox.getTokens.get(1).getId.toString, raffleBox.getRegisters.get(5).getValue.asInstanceOf[Long])
+    val winnerTicketBox = getWinner(ctx, raffleBox.getTokens.get(1).getId.toString, raffleBox.getRegisters.get(4).getValue.asInstanceOf[Long])
     val winnerAddress = utils.getAddress(winnerTicketBox.getRegisters.get(0).getValue.asInstanceOf[Coll[Byte]].toArray)
     val txB = ctx.newTxBuilder()
     val prover = ctx.newProverBuilder()
