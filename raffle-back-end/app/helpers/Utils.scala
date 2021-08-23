@@ -1,20 +1,20 @@
 package helpers
 
 import java.io.{PrintWriter, StringWriter}
-
 import javax.inject.{Inject, Singleton}
 import com.typesafe.config.ConfigFactory
 import io.circe.Json
 import network.{Client, Explorer}
 import org.ergoplatform.appkit.{Address, BlockchainContext, ErgoType, ErgoValue, InputBox, JavaHelpers}
 import special.collection.Coll
-import java.security.MessageDigest
 
+import java.security.MessageDigest
 import org.ergoplatform.ErgoAddress
 import sigmastate.serialization.ErgoTreeSerializer
 import network.GetRequest
 import play.api.Logger
 
+import scala.util.matching.Regex
 import scala.util.Try
 
 @Singleton
@@ -180,6 +180,33 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
       case _: InvalidRecaptchaException => throw new InvalidRecaptchaException
       case _: Throwable => throw new Throwable("problem in verify recaptcha")
     }
+  }
+
+  def validateErgValue(value: Long): Unit = {
+    if (value < 10000) throw new Throwable("Minimum value is 0.00001 Erg")
+  }
+
+  def validateAddress(address: String, name: String): Unit = {
+    try {
+      Configs.addressEncoder.fromString(address).get.script
+    }
+    catch {
+      case _: Throwable => throw new Throwable(s"Invalid ${name} address")
+    }
+  }
+
+  def validateCharityPercent(charity: Int, service: Long): Unit = {
+    if (charity < 1) throw new Throwable("Charity share should be positive")
+    else if (charity + service > 99) throw new Throwable("Sum of charity share and service share should be less than 100")
+  }
+
+  def validateDeadline(value: Long): Unit = {
+    if (value < 1) throw new Throwable("Deadline should be positive")
+    else if (value > 262800) throw new Throwable("Maximum deadline is 262800 blocks (about 1 year)")
+  }
+
+  def validateTicketCounts(value: Long): Unit = {
+    if (value < 1) throw new Throwable("Ticket counts should be positive")
   }
 
 }

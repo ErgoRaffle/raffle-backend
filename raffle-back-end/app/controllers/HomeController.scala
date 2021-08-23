@@ -164,21 +164,21 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       val currentHeight: Long = client.getHeight
       val fee = Configs.fee
 
-      val raffles = s"""{
-           | "id" : "$id",
-           | "name" : "$name",
-           | "description" : "$description",
-           | "deadline" : $deadlineHeight,
-           | "erg" : $totalRaised,
-           | "charityAddr" : "$charityAddress",
-           | "winnerPercent" : $winnerPercent,
-           | "charityPercent" : $charityPercent,
-           | "min" : $goal,
-           | "ticketPrice" : $ticketPrice,
-           | "fee" : $fee,
-           | "currentHeight" : $currentHeight
-            }""".stripMargin
-      Ok(raffles).as("application/json")
+      val result = Json.fromFields(List(
+        ("id", Json.fromString(id)),
+        ("name", Json.fromString(name)),
+        ("description", Json.fromString(description)),
+        ("deadline", Json.fromLong(deadlineHeight)),
+        ("erg", Json.fromLong(totalRaised)),
+        ("charityAddr", Json.fromString(charityAddress)),
+        ("winnerPercent", Json.fromLong(winnerPercent)),
+        ("charityPercent", Json.fromLong(charityPercent)),
+        ("min", Json.fromLong(goal)),
+        ("ticketPrice", Json.fromLong(ticketPrice)),
+        ("fee", Json.fromLong(fee)),
+        ("currentHeight", Json.fromLong(currentHeight))
+      ))
+      Ok(result.toString()).as("application/json")
     }
     catch {
       case e: Throwable => exception(e)
@@ -207,17 +207,27 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       val ticketPrice: Long = request.body.hcursor.downField("ticketPrice").as[Long].getOrElse(throw new Throwable("charityAddr field must exist"))
       val captcha: String = request.body.hcursor.downField("captcha").as[String].getOrElse("")
       if(Configs.recaptchaKey != "not-set") utils.verifyRecaptcha(captcha)
+
+      utils.validateErgValue(ticketPrice)
+      utils.validateErgValue(goal)
+      utils.validateAddress(charityAddr, "charity")
+      utils.validateAddress(walletAddr, "wallet")
+      utils.validateDeadline(deadlineHeight)
+
+      val serviceBox = utils.getServiceBox()
+      val servicePercent = serviceBox.getRegisters.get(0).getValue.asInstanceOf[Long]
+      utils.validateCharityPercent(charityPercent, servicePercent)
+
       val paymentAddress = createReqUtils.CreateRaffleProxyAddress(walletAddr, charityPercent, name, description, deadlineHeight + client.getHeight, charityAddr, goal, ticketPrice)
       val amount = Configs.fee * 4
       val delay = Configs.creationDelay
 
-      Ok(
-        s"""{
-           |  "deadline": $delay,
-           |  "fee": $amount,
-           |  "address": "$paymentAddress"
-           |}""".stripMargin
-      ).as("application/json")
+      val result = Json.fromFields(List(
+        ("deadline", Json.fromLong(delay)),
+        ("address", Json.fromString(paymentAddress)),
+        ("fee", Json.fromLong(amount))
+      ))
+      Ok(result.toString()).as("application/json")
     } catch {
       case e: Throwable => exception(e)
     }
@@ -225,36 +235,40 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
 
 
   def donateToId: Action[Json] = Action(circe.json) { implicit request =>
-    val raffleId: String = request.body.hcursor.downField("id").as[String].getOrElse(throw new Throwable("id field must exist"))
-    val walletAddr: String = request.body.hcursor.downField("walletAddr").as[String].getOrElse(throw new Throwable("walletAddr field must exist"))
-    val ticketCounts: Long = request.body.hcursor.downField("ticketCounts").as[Long].getOrElse(throw new Throwable("erg field must exist"))
-    val captcha: String = request.body.hcursor.downField("captcha").as[String].getOrElse("")
     try {
+      val raffleId: String = request.body.hcursor.downField("id").as[String].getOrElse(throw new Throwable("id field must exist"))
+      val walletAddr: String = request.body.hcursor.downField("walletAddr").as[String].getOrElse(throw new Throwable("walletAddr field must exist"))
+      val ticketCounts: Long = request.body.hcursor.downField("ticketCounts").as[Long].getOrElse(throw new Throwable("erg field must exist"))
+      val captcha: String = request.body.hcursor.downField("captcha").as[String].getOrElse("")
       if(Configs.recaptchaKey != "not-set") utils.verifyRecaptcha(captcha)
+
+      utils.validateAddress(walletAddr, "wallet")
+      utils.validateTicketCounts(ticketCounts)
+
       val response = donateReqUtils.findProxyAddress(walletAddr, raffleId, ticketCounts)
       val paymentAddress = response._1
       val fee = response._2
       val deadline = Configs.creationDelay
 
-      Ok(
-        s"""{
-           | "deadline": $deadline,
-           | "address": "$paymentAddress",
-           | "fee" : $fee
-           |}""".stripMargin
-      ).as("application/json")
+      val result = Json.fromFields(List(
+        ("deadline", Json.fromLong(deadline)),
+        ("address", Json.fromString(paymentAddress)),
+        ("fee", Json.fromLong(fee))
+      ))
+      Ok(result.toString()).as("application/json")
     } catch {
-      case _: Throwable => throw new Throwable("problem in verifying recaptcha")
+      case e: Throwable => exception(e)
     }
   }
 
   def servicePercent(): Action[AnyContent] = Action {
     val serviceBox = utils.getServiceBox()
     val p = serviceBox.getRegisters.get(0).getValue.asInstanceOf[Long]
-    Ok(
-      s"""{
-        | "z" : $p
-        |}""".stripMargin).as("application/json")
+
+    val result = Json.fromFields(List(
+      ("z", Json.fromLong(p))
+    ))
+    Ok(result.toString()).as("application/json")
   }
 
   def recaptchaKey(): Action[AnyContent] = Action {
@@ -262,10 +276,11 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     var required = ""
     if(key == "not-set") required = "false"
     else required = "true"
-    Ok(
-      s"""{
-         | "pubKey" : "$key",
-         | "required" : $required
-         |}""".stripMargin).as("application/json")
+
+    val result = Json.fromFields(List(
+      ("pubKey", Json.fromString(key)),
+      ("required", Json.fromString(required))
+    ))
+    Ok(result.toString()).as("application/json")
   }
 }
