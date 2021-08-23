@@ -129,15 +129,16 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
     })
   }
 
-  // TODO: ONLY REMOVE THE REQUEST IF PAYMENT BOX IS UNAVAILABLE
+
   def isReady(req: CreateReq): Boolean = {
     val currentTime = Calendar.getInstance().getTimeInMillis / 1000
     client.getClient.execute(ctx => {
       if (req.state == 0) {
-        val paymentBoxList = ctx.getUnspentBoxesFor(Address.create(req.paymentAddress), 0, 100)
-        if (paymentBoxList.size() == 0) return false
-        val total = paymentBoxList.asScala.map(item => item.getValue).reduce((a, b) => a + b)
-        return total >= 4 * Configs.fee
+        val coveringList = ctx.getCoveringBoxesFor(Address.create(req.paymentAddress), 4*Configs.fee)
+        if(coveringList.isCovered){
+          createReqDAO.updateTTL(req.id, currentTime+Configs.creationDelay)
+          return true
+        }
       } else if (req.state == 1) {
         return checkTransaction(req.createTxId.getOrElse("")) == 0 || checkTransaction(req.mergeTxId.getOrElse("")) == 0
       }

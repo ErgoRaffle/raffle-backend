@@ -22,14 +22,6 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
                                donateReqDAO: DonateReqDAO, addresses: Addresses){
   private val logger: Logger = Logger(this.getClass)
 
-  def findRaffleBox(tokenId: String): InputBox ={
-    client.getClient.execute((ctx: BlockchainContext) => {
-      val raffleAdd = Configs.addressEncoder.fromProposition(addresses.getRaffleActiveContract().getErgoTree).get
-      val raffleBoxList = ctx.getCoveringBoxesFor(Address.create(raffleAdd.toString), Configs.infBoxVal).getBoxes
-      raffleBoxList.asScala.filter(_.getTokens.size() > 1)
-        .filter(_.getTokens.get(1).getId.toString == tokenId).head
-    })
-  }
 
   def findProxyAddress(pk: String, raffleId: String, ticketCounts: Long): (String, Long) = {
     client.getClient.execute(ctx => {
@@ -44,7 +36,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         raffleContract.donateScript)
       val feeEmissionAddress: ErgoAddress = Configs.addressEncoder.fromProposition(donateContract.getErgoTree).get
 
-      val raffleBox = findRaffleBox(raffleId)
+      val raffleBox = utils.getRaffleBox(raffleId)
 
       logger.debug("Donate payment address created")
       val r4 = raffleBox.getRegisters.get(0).getValue.asInstanceOf[CollOverArray[Long]].toArray.clone()
@@ -61,7 +53,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
 
   def createDonateTx(req: DonateReq): Unit = {
     client.getClient.execute(ctx => {
-      val raffleBox = findRaffleBox(req.raffleToken)
+      val raffleBox = utils.getRaffleBox(req.raffleToken)
       val r4 = raffleBox.getRegisters.get(0).getValue.asInstanceOf[CollOverArray[Long]].toArray.clone()
       val ticketPrice: Long = r4(2)
 
