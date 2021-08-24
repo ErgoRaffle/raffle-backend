@@ -92,9 +92,12 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
           utils.longListToErgoValue(Array(ticketSold, ticketSold + req.ticketCount, deadlineHeight, ticketPrice))
         ).build()
 
+      var change = paymentBoxList.getCoveredAmount - req.fee
+      var fee = Configs.fee
+      if(change <= Configs.minBoxErg) fee += change
       val txBoxList: Seq[InputBox] = Seq(raffleBox) ++ paymentBoxList.getBoxes.asScala.toSeq
       val tx = txB.boxesToSpend(txBoxList.asJava)
-        .fee(Configs.fee)
+        .fee(fee)
         .outputs(outputRaffle, ticketOutput)
         .sendChangeTo(Address.create(req.participantAddress).getErgoAddress)
         .build()
@@ -126,29 +129,11 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         }
       }
       else {
-        if(checkTransaction(req.donateTxID.getOrElse("")) == 1){
+        if(utils.checkTransaction(req.donateTxID.getOrElse("")) == 1){
           donateReqDAO.updateStateById(req.id, 2)
         }
       }
     })
     false
-  }
-
-  def checkTransaction(txId: String): Int = {
-    if(txId != "") {
-      val unconfirmedTx = explorer.getUnconfirmedTx(txId)
-      if (unconfirmedTx == Json.Null) {
-        val confirmedTx = explorer.getConfirmedTx(txId)
-        if (confirmedTx == Json.Null) {
-          0 // resend transaction
-        } else {
-          1 // transaction mined
-        }
-      } else {
-        2 // transaction already in mempool
-      }
-    }else{
-      0
-    }
   }
 }

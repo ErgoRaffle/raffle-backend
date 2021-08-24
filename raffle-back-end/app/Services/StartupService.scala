@@ -42,5 +42,4 @@ class StartupService @Inject()(node: Client, system: ActorSystem, createReqHandl
     receiver = jobs,
     message = JobsUtil.refund
   )
-
 }
