@@ -39,25 +39,23 @@ class RaffleContract @Inject()(){
        |      )
        |    )
        |  }else{
-       |    if(OUTPUTS(0).tokens(1)._2 > SELF.tokens(1)._2){
+       |    if(OUTPUTS(0).tokens(1)._2 == SELF.tokens(1)._2 + 1L){
        |      sigmaProp(
        |        allOf(
        |          Coll(
-       |            true,
        |            OUTPUTS(0).R5[Coll[Byte]].get == SELF.R5[Coll[Byte]].get,
+       |            OUTPUTS(0).R4[Long].get == SELF.R4[Long].get
        |            OUTPUTS(0).propositionBytes == SELF.propositionBytes,
        |            OUTPUTS(0).tokens(0)._1 == raffleServiceNFT,
        |            OUTPUTS(0).tokens(1)._1 == raffleServiceToken,
        |            OUTPUTS(0).value >= SELF.value,
-//       |            INPUTS.size == 2,
-       |            OUTPUTS(0).tokens(1)._2 == SELF.tokens(1)._2 + INPUTS(1).tokens(0)._2,
        |          )
        |        )
        |      )
        |    }else{
        |      if(OUTPUTS.size == 5 && OUTPUTS(4).tokens.size > 0){
        |        // because output 4 can be available or not if this output exists and have tokens we can not continue and break down process
-       |        sigmaProp(true)
+       |        sigmaProp(false)
        |      }else{
        |        // if we are here we have 4 outputs in transaction or 5th transaction have no tokens so
        |        sigmaProp(
@@ -71,19 +69,21 @@ class RaffleContract @Inject()(){
        |              OUTPUTS(0).tokens(1)._1 == raffleServiceToken,
        |              OUTPUTS(0).value >= SELF.value,
        |              OUTPUTS(0).tokens(1)._2 == SELF.tokens(1)._2 - 1,
-       |              OUTPUTS(0).R4[Long] == SELF.R4[Long],
-       |              OUTPUTS(0).R5[Coll[Byte]] == SELF.R5[Coll[Byte]],
+       |              OUTPUTS(0).R4[Long].get == SELF.R4[Long].get,
+       |              OUTPUTS(0).R5[Coll[Byte]].get == SELF.R5[Coll[Byte]].get,
        |              blake2b256(OUTPUTS(1).propositionBytes) == raffleScriptHash,
-       |              OUTPUTS(1).R7[Coll[Byte]].get == SELF.R5[Coll[Byte]].get,
+       |              // [Charity Coef, service Fee, TicketPrice, Goal, Deadline, TotalSoldTicket]
        |              OUTPUTS(1).R4[Coll[Long]].get.size == 6,
        |              OUTPUTS(1).R4[Coll[Long]].get(1) == SELF.R4[Long].get,
+       |              OUTPUTS(1).R4[Coll[Long]].get(0) > 0L
        |              // Charity Coef + service fee < 100L (winner percent is required)
        |              OUTPUTS(1).R4[Coll[Long]].get(0) + OUTPUTS(1).R4[Coll[Long]].get(1) < 100L,
        |              // no sold ticket at begining
        |              OUTPUTS(1).R4[Coll[Long]].get(5) == 0,
-       |              // status set to zero (create token)
+       |              // Raffle charity address
        |              OUTPUTS(1).R5[Coll[Byte]].isDefined,
-       |              OUTPUTS(1).R6[Coll[Coll[Byte]]].get.size == 3,
+       |              // [Name, Description, id]
+       |              OUTPUTS(1).R6[Coll[Coll[Byte]]].get.size >= 2,
        |              // service fee address stored in R7
        |              OUTPUTS(1).R7[Coll[Byte]].get == SELF.R5[Coll[Byte]].get,
        |              // must store ticket id to get all tokens from token repo box
@@ -107,6 +107,7 @@ class RaffleContract @Inject()(){
        |    // raffle does not completed
        |    sigmaProp(false)
        |  }else if (INPUTS.size == 3) {
+       |    // Winner
        |    sigmaProp(
        |      allOf(
        |        Coll(
@@ -119,10 +120,10 @@ class RaffleContract @Inject()(){
        |      )
        |    )
        |  } else {
+       |    // Refund
        |    sigmaProp(
        |      allOf(
        |        Coll(
-       |          true,
        |          INPUTS(0).tokens(1)._1 == SELF.tokens(0)._1,
        |          INPUTS(0).tokens(0)._1 == raffleServiceToken,
        |          INPUTS(1).id == SELF.id,
@@ -142,7 +143,6 @@ class RaffleContract @Inject()(){
        |sigmaProp(
        |  allOf(
        |    Coll(
-       |      true,
        |      SELF.id == INPUTS(0).id,
        |      OUTPUTS(0).value == SELF.value,
        |      blake2b256(OUTPUTS(0).propositionBytes) == raffleActiveHash,
@@ -175,11 +175,11 @@ class RaffleContract @Inject()(){
        |  val outDeadlineHeight = OUTPUTS(0).R4[Coll[Long]].get(4)
        |  val outTotalSoldTicket = OUTPUTS(0).R4[Coll[Long]].get(5)
        |  if (HEIGHT < deadlineHeight) {
+       |    // user can donate
        |    val currentSoldTicket = OUTPUTS(1).tokens(0)._2
        |    sigmaProp(
        |      allOf(
        |        Coll(
-       |          true,
        |          // validate app.raffle box
        |          OUTPUTS(0).tokens(0)._1 == SELF.tokens(0)._1,
        |          OUTPUTS(0).propositionBytes == SELF.propositionBytes,
@@ -201,8 +201,11 @@ class RaffleContract @Inject()(){
        |          // check ergs
        |          OUTPUTS(0).value > SELF.value,
        |          OUTPUTS(1).value >= fee,
-       |          OUTPUTS(0).value == SELF.value + currentSoldTicket * ticketPrice,
-       |          // check ticket parameters
+       |          OUTPUTS(0).value == SELF.value + (currentSoldTicket * ticketPrice),
+       |          // Winner Address or redeem
+       |          // TODO check R4 to be valid address
+       |          OUTPUTS(1).R4[Coll[Byte]].isDefined,
+       |          // check ticket parameters [rangeStart, rangeEnd, deadlineHeight, ticketPrice]
        |          OUTPUTS(1).R5[Coll[Long]].get(0) == totalSoldTicket,
        |          OUTPUTS(1).R5[Coll[Long]].get(1) == outTotalSoldTicket,
        |          OUTPUTS(1).R5[Coll[Long]].get(2) == deadlineHeight,
@@ -211,7 +214,7 @@ class RaffleContract @Inject()(){
        |      )
        |    )
        |  } else {
-       |      if(SELF.value >= goal) {
+       |      if(totalRaised >= goal) {
        |        // charge charity address and service fee. then change status to completed
        |        val charityAmount = totalRaised * charityCoef / 100L
        |        val serviceFeeAmount = totalRaised * serviceFee / 100L
@@ -220,7 +223,6 @@ class RaffleContract @Inject()(){
        |        sigmaProp(
        |          allOf(
        |            Coll(
-       |            true,
        |              // TODO must check data input to be oracle box
        |              // check winner box remain on output box
        |              blake2b256(OUTPUTS(0).propositionBytes) == winnerScriptHash,
@@ -230,7 +232,7 @@ class RaffleContract @Inject()(){
        |              OUTPUTS(0).R4[Coll[Long]].get(3) == goal,
        |              OUTPUTS(0).R4[Coll[Long]].get(4) == deadlineHeight,
        |              OUTPUTS(0).R4[Coll[Long]].get(5) == totalSoldTicket,
-       |              OUTPUTS(0).R5[Coll[Byte]] == SELF.R5[Coll[Byte]],
+       |              OUTPUTS(0).R5[Coll[Byte]].get == SELF.R5[Coll[Byte]].get,
        |              OUTPUTS(0).R6[Coll[Coll[Byte]]].get == SELF.R6[Coll[Coll[Byte]]].get,
        |              OUTPUTS(0).R7[Coll[Byte]].get == SELF.R7[Coll[Byte]].get,
 
@@ -244,7 +246,8 @@ class RaffleContract @Inject()(){
        |              OUTPUTS(1).value == charityAmount,
        |              // check service fee
        |              OUTPUTS(2).propositionBytes == serviceAddress,
-       |              OUTPUTS(2).value == serviceFeeAmount
+       |              OUTPUTS(2).value == serviceFeeAmount,
+       |              CONTEXT.dataInputs(0).tokens(0)._1 == randomBoxToken
        |            )
        |          )
        |        )
@@ -278,18 +281,19 @@ class RaffleContract @Inject()(){
 
   lazy val raffleWinnerScript: String =
     s"""{
+       |  // Input boxes are [ Service, Winner, Ticket]
+       |  // Output boxes are [ Service, winner prize]
        |  val winNumber = SELF.R8[Long].get
        |  sigmaProp(
        |    allOf(
        |      Coll(
-       |        true,
        |        OUTPUTS(0).tokens(0)._1 == raffleServiceNFT,
        |        OUTPUTS(0).tokens(1)._1 == raffleServiceToken,
        |        OUTPUTS(0).tokens(1)._2 == SELF.tokens(0)._2 + INPUTS(0).tokens(1)._2,
        |        INPUTS(1).id == SELF.id,
        |        INPUTS(2).tokens(0)._1 == SELF.tokens(1)._1,
        |        INPUTS(2).R5[Coll[Long]].get(0) < winNumber,
-       |        INPUTS(2).R5[Coll[Long]].get(0) + INPUTS(2).R5[Coll[Long]].get(1) >= winNumber,
+       |        INPUTS(2).R5[Coll[Long]].get(1) >= winNumber,
        |      )
        |    )
        |  )
@@ -301,17 +305,20 @@ class RaffleContract @Inject()(){
        |  val totalSoldTicket = SELF.R4[Coll[Long]].get(5)
        |  // refunding process
        |  if(totalSoldTicket == 0){
+       |    // inputs are [Service, raffle]
+       |    // outputs are [Service]
        |    sigmaProp(
        |      allOf(
        |        Coll(
-       |          true,
-       |          OUTPUTS(0).tokens(0)._1 ==raffleServiceNFT,
+       |          OUTPUTS(0).tokens(0)._1 == raffleServiceNFT,
        |          OUTPUTS(0).tokens(1)._1 == SELF.tokens(0)._1,
        |          OUTPUTS(0).tokens(1)._2 == SELF.tokens(0)._2 + INPUTS(0).tokens(1)._2
        |        )
        |      )
        |    )
        |  } else {
+       |    // inputs [ Raffle, Ticket]
+       |    // Outputs[ Raffle, Refund]
        |    sigmaProp(
        |      allOf(
        |        Coll(
@@ -322,13 +329,13 @@ class RaffleContract @Inject()(){
        |          OUTPUTS(0).R4[Coll[Long]].get(3) == SELF.R4[Coll[Long]].get(3),
        |          OUTPUTS(0).R4[Coll[Long]].get(4) == SELF.R4[Coll[Long]].get(4),
        |          OUTPUTS(0).R4[Coll[Long]].get(5) == totalSoldTicket - INPUTS(1).tokens(0)._2,
-       |          OUTPUTS(0).R5[Coll[Byte]] == SELF.R5[Coll[Byte]],
+       |          OUTPUTS(0).R5[Coll[Byte]].get == SELF.R5[Coll[Byte]].get,
        |          OUTPUTS(0).R6[Coll[Coll[Byte]]].get == SELF.R6[Coll[Coll[Byte]]].get,
        |          OUTPUTS(0).R7[Coll[Byte]].get == SELF.R7[Coll[Byte]].get,
        |          OUTPUTS(0).tokens(0)._1 == raffleServiceToken,
        |          OUTPUTS(0).tokens(1)._1 == SELF.tokens(1)._1,
        |          // validate Token & ERG
-       |          OUTPUTS(0).value == SELF.value - INPUTS(1).tokens(0)._2 * ticketPrice,
+       |          OUTPUTS(0).value == SELF.value - (INPUTS(1).tokens(0)._2 * ticketPrice),
        |          OUTPUTS(0).tokens(1)._2 == SELF.tokens(1)._2 + INPUTS(1).tokens(0)._2,
        |        )
        |      )
@@ -342,7 +349,6 @@ class RaffleContract @Inject()(){
        |  sigmaProp(
        |    allOf(
        |      Coll(
-//       |        true,
        |        OUTPUTS(0).tokens(0)._1 == raffleServiceNFT,
        |        OUTPUTS(1).tokens(0)._1 == raffleServiceToken,
        |        OUTPUTS(1).R4[Coll[Long]].get(0) == charityCoef,
@@ -355,117 +361,6 @@ class RaffleContract @Inject()(){
        |  )
        |}""".stripMargin
 
-
-  // OLD CONTRACT
-  lazy val winnerScript : String =
-    s"""{
-       |  sigmaProp(
-       |    allOf(Coll(
-       |          // Valid Ticket
-       |          INPUTS(1).tokens(0)._1 == SELF.tokens(0)._1,
-       |          INPUTS(1).R4[Long].get <= SELF.R4[Long].get,
-       |          INPUTS(1).R4[Long].get + INPUTS(1).R5[Long].get > SELF.R4[Long].get
-       |    ))
-       |  )
-       |}""".stripMargin
-
-  lazy val tokenRepoScript : String =
-    s"""{
-       |  val totalSoldTicket = SELF.R4[Long].get
-       |  val totalSoldTicketBI: BigInt = totalSoldTicket.toBigInt
-       |  val totalRaised = totalSoldTicket * ticketPrice
-       |  val charityCoef = SELF.R5[Long].get
-       |  val projectCoef = SELF.R6[Long].get
-       |  val winnerCoef = 100L - charityCoef - projectCoef
-       |  sigmaProp(
-       |    if (HEIGHT < deadlineHeight) {
-       |      allOf(Coll(
-       |            // validate Script
-       |            OUTPUTS(0).propositionBytes == SELF.propositionBytes,
-       |            blake2b256(OUTPUTS(1).propositionBytes) == ticketScriptHash,
-       |            OUTPUTS(1).R6[Coll[Byte]].get == blake2b256(SELF.propositionBytes),
-       |            // minERG
-       |            INPUTS(1).value >= ticketPrice + 2 * minFee,
-       |            // validate Register
-       |            OUTPUTS(0).R4[Long].get == totalSoldTicket + (INPUTS(1).value - 2 * minFee) / ticketPrice,
-       |            OUTPUTS(1).R4[Long].get == totalSoldTicket,
-       |            OUTPUTS(1).R5[Long].get == (INPUTS(1).value - 2 * minFee) / ticketPrice,
-       |            // validate Token
-       |            OUTPUTS(0).tokens(0)._1 == SELF.tokens(0)._1,
-       |            OUTPUTS(0).tokens(0)._2 == SELF.tokens(0)._2 - (INPUTS(1).value - 2 * minFee) / ticketPrice,
-       |            OUTPUTS(0).tokens(1)._1 == SELF.tokens(1)._1, // Raffle Service Token
-       |            OUTPUTS(1).tokens(0)._1 == SELF.tokens(0)._1,
-       |            OUTPUTS(1).tokens(0)._2 == (INPUTS(1).value - 2 * minFee) / ticketPrice,
-       |            // ERG Protect
-       |            OUTPUTS(0).value == SELF.value + INPUTS(1).value - 2 * minFee,
-       |            OUTPUTS(1).value == minFee,
-       |            // same Coef
-       |            OUTPUTS(0).R5[Long].get == charityCoef,
-       |            OUTPUTS(0).R6[Long].get == projectCoef,
-       |            true
-       |            ))
-       |    }
-       |    else {
-       |      if (totalRaised >= minToRaise) {
-       |        allOf(Coll(
-       |              // Validate Size
-       |              INPUTS.size == 1 && OUTPUTS.size == 5,
-       |              // Pay Back Raffle Service Token
-       |              OUTPUTS(0).tokens(0)._1 == SELF.tokens(1)._1,
-       |              OUTPUTS(0).tokens(0)._2 == 1,
-       |              OUTPUTS(0).propositionBytes == servicePubKey.propBytes,
-       |              // Charity Box
-       |              OUTPUTS(1).value >= totalRaised * charityCoef / 100,
-       |              OUTPUTS(1).propositionBytes == charityPubKey.propBytes,
-       |              // TODO: Change here
-       |              // Project Box
-       |              OUTPUTS(2).value >= totalRaised * projectCoef / 100,
-       |              OUTPUTS(2).propositionBytes == servicePubKey.propBytes,
-       |              // Validate Seed
-       |              CONTEXT.dataInputs(0).tokens(0)._1 == oracleNebulaNFT,
-       |              // Winner Box
-       |              OUTPUTS(3).value >= totalRaised * winnerCoef / 100,
-       |              blake2b256(OUTPUTS(3).propositionBytes) == winnerScriptHash,
-       |              OUTPUTS(3).R4[Long].get == ((byteArrayToBigInt(CONTEXT.dataInputs(0).id.slice(0, 15)).toBigInt + totalSoldTicketBI) % totalSoldTicketBI).toBigInt,
-       |              OUTPUTS(3).tokens(0)._1 == SELF.tokens(0)._1,
-       |              OUTPUTS(3).tokens(0)._2 == SELF.tokens(0)._2
-       |         ))
-       |      }
-       |      else {
-       |      if (totalRaised < minToRaise) {
-       |        if(totalSoldTicket > 0){
-       |          allOf(Coll(
-       |                // validate Script
-       |                OUTPUTS(0).propositionBytes == SELF.propositionBytes,
-       |                // validate Token & ERG
-       |                OUTPUTS(0).tokens(0)._1 == SELF.tokens(0)._1,
-       |                OUTPUTS(0).value >= SELF.value - (OUTPUTS(0).tokens(0)._2 - SELF.tokens(0)._2) * ticketPrice,
-       |                OUTPUTS(0).tokens(0)._2 > SELF.tokens(0)._2,
-       |                OUTPUTS(0).R4[Long].get == SELF.R4[Long].get - (OUTPUTS(0).tokens(0)._2 - SELF.tokens(0)._2)
-       |          ))
-       |        }
-       |        else
-       |        {
-       |          allOf(Coll(
-       |                // Pay Back Raffle Service Token
-       |                OUTPUTS(0).tokens(0)._1 == SELF.tokens(1)._1,
-       |                OUTPUTS(0).tokens(0)._2 == 1,
-       |                OUTPUTS(0).propositionBytes == servicePubKey.propBytes
-       |          ))
-       |        }
-       |      }
-       |      else {
-       |        false
-       |      }
-       |    }
-       |  })
-       |}""".stripMargin
-
-  lazy val raffleServiceScript : String = // may not be used
-    s"""{
-       |  servicePubKey
-       |}""".stripMargin
-
   lazy val donateScript : String =
     s"""{
        |  proveDlog(decodePoint(pk)) ||
@@ -474,26 +369,4 @@ class RaffleContract @Inject()(){
        |            (OUTPUTS(1).tokens(0)._2 == ticketCount))
        |}""".stripMargin
 
-  lazy val newRaffleProxyScript : String =
-    s"""{
-       |  sigmaProp(
-       |    allOf(
-       |      Coll(
-       |        OUTPUTS(1).tokens(1)._1 == serviceToken,
-       |        blake2b256(OUTPUTS(1).propositionBytes) == raffleHash,
-       |        OUTPUTS(1).tokens(0)._1 == SELF.tokens(0)._1,
-       |        OUTPUTS(1).tokens(0)._2 == SELF.tokens(0)._2
-       |      )
-       |    )
-       |  )
-       |}""".stripMargin
-
-  lazy val rafflePaymentScript : String =
-    s"""
-       |  pk ||
-       |  sigmaProp(allOf(Coll(blake2b256(OUTPUTS(0).propositionBytes) == raffleProxyHash,
-       |                       OUTPUTS(0).tokens(0)._1 == SELF.id,
-       |                       OUTPUTS(0).tokens(0)._2 == 1000000000000000000L
-       |            )))
-       |""".stripMargin
 }

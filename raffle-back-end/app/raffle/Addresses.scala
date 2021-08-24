@@ -54,6 +54,7 @@ class Addresses @Inject()(client: Client, explorer: Explorer, utils: Utils, cont
       .item("ticketScriptHash", ticketScriptHash)
       .item("redeemScriptHash", raffleRedeemScriptHash)
       .item("raffleServiceNFT", ErgoId.create(Configs.token.nft).getBytes)
+      .item("randomBoxToken", ErgoId.create(Configs.token.oracle).getBytes)
       .item("raffleServiceToken", ErgoId.create(Configs.token.service).getBytes)
       .item("fee", Configs.fee)
       .build(), contract.raffleActiveScript)
