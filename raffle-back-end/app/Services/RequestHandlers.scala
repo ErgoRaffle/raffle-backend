@@ -39,6 +39,8 @@ class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO,
     }) recover {
       case e: Throwable => logger.error(utils.getStackTraceStr(e))
     }
+    try createReqUtils.independentMergeTxGeneration()
+    catch {case e: Throwable => logger.error(utils.getStackTraceStr(e))}
   }
 
   def handleRemoval(req: CreateReq): Unit = {
@@ -111,8 +113,11 @@ class RefundReqHandler@Inject ()(client: Client, utils: Utils, refundReqUtils: F
   private val logger: Logger = Logger(this.getClass)
 
   def handleReqs(): Unit = {
-    logger.debug("Finalize handling is in process ....")
     logger.info("Handling finalize process...")
-    refundReqUtils.Refund()
+    try {
+      refundReqUtils.Refund()
+    } catch {
+      case e: Throwable => logger.error(utils.getStackTraceStr(e))
+    }
   }
 }

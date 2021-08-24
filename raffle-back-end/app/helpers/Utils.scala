@@ -95,9 +95,8 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
           txMap += (id -> txJson)
         })
         val keys = txMap.keys.toSeq
-        logger.info(raffleBox.getId.toString)
-        logger.info(keys.toString())
-        logger.info(keys.contains(raffleBox.getId.toString).toString)
+        logger.debug(raffleBox.getId.toString)
+        logger.debug(keys.toString())
         while (keys.contains(raffleBox.getId.toString)) {
           val txJson = txMap(raffleBox.getId.toString).toString()
           var newJson = txJson.replaceAll("id", "boxId")
@@ -116,7 +115,7 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
 
   def getServiceBox(): InputBox = {
     client.getClient.execute((ctx: BlockchainContext) => {
-      val serviceBoxJson = explorer.getUnspentTokenBoxes(Configs.token.nft, 0, 10)
+      val serviceBoxJson = explorer.getUnspentTokenBoxes(Configs.token.nft, 0, 100)
       val serviceBoxId = serviceBoxJson.hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request")).head.hcursor.downField("boxId").as[String].getOrElse("")
       var serviceBox = ctx.getBoxesById(serviceBoxId).head
       val serviceAddress = Configs.addressEncoder.fromProposition(serviceBox.getErgoTree).get.toString
@@ -131,9 +130,8 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
           txMap += (id -> txJson)
         })
         val keys = txMap.keys.toSeq
-        logger.info(serviceBox.getId.toString)
-        logger.info(keys.toString())
-        logger.info(keys.contains(serviceBox.getId.toString).toString)
+        logger.debug(serviceBox.getId.toString)
+        logger.debug(keys.toString())
         while (keys.contains(serviceBox.getId.toString)) {
           val txJson = txMap(serviceBox.getId.toString).toString()
           var newJson = txJson.toString().replaceAll("id", "boxId")

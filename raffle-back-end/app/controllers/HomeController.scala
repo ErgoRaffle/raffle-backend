@@ -92,9 +92,9 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     }
     try {
       val currentHeight: Long = client.getHeight
-      var totalRaffles = 0
+      var totalRaffles = raffleCount - offset
       if(raffleCount > limit+offset) totalRaffles = limit
-      else totalRaffles = raffleCount - offset
+      else if(totalRaffles < 0) totalRaffles = 0
       val result = Json.fromFields(List(
         ("items", Json.fromValues(raffles.toList)),
         ("total", Json.fromInt(totalRaffles)),
