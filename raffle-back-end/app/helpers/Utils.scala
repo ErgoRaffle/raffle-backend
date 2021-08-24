@@ -107,7 +107,7 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
           raffleBox = tmpTx.getOutputsToSpend.get(0)
         }
       } catch {
-        case e: Throwable => logger.error(e.toString)
+        case e: Throwable => logger.error(getStackTraceStr(e))
       }
       raffleBox
     })

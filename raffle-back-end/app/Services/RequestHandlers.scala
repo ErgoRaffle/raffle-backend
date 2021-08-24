@@ -32,8 +32,7 @@ class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO,
             handleReq(req)
           }
         } catch {
-          case e: Throwable => e.printStackTrace()
-            logger.error(e.getMessage)
+          case e: Throwable => logger.error(utils.getStackTraceStr(e))
         }
       })
     }) recover {
@@ -81,8 +80,7 @@ class DonateReqHandler@Inject ()(client: Client, donateReqDAO: DonateReqDAO,
             handleReq(req)
           }
         } catch {
-          case e: Throwable => e.printStackTrace()
-            logger.error(e.getMessage)
+          case e: Throwable => logger.error(utils.getStackTraceStr(e))
         }
       })
     }) recover {
