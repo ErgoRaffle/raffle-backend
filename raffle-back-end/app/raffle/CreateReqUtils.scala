@@ -130,14 +130,15 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
   def isReady(req: CreateReq): Boolean = {
     val currentTime = Calendar.getInstance().getTimeInMillis / 1000
     client.getClient.execute(ctx => {
+      val coveringList = ctx.getCoveringBoxesFor(Address.create(req.paymentAddress), 4*Configs.fee)
+      if(coveringList.isCovered) {
+        createReqDAO.updateTTL(req.id, currentTime + Configs.creationDelay)
+      }
       if (req.state == 0) {
-        val coveringList = ctx.getCoveringBoxesFor(Address.create(req.paymentAddress), 4*Configs.fee)
-        if(coveringList.isCovered){
-          createReqDAO.updateTTL(req.id, currentTime+Configs.creationDelay)
-          return true
-        }
-      } else if (req.state == 1) {
-        return utils.checkTransaction(req.createTxId.getOrElse("")) == 0 || utils.checkTransaction(req.mergeTxId.getOrElse("")) == 0
+        if(coveringList.isCovered) return true
+      }
+      else if (req.state == 1) {
+        return utils.checkTransaction(req.createTxId.getOrElse("")) == 0
       }
       return false
     })
@@ -157,20 +158,6 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
     }
   }
 
-  def generateAndSendMergeTx(ctx: BlockchainContext, req: CreateReq): Unit = {
-    val txJson = explorer.getConfirmedTx(req.createTxId.getOrElse(""))
-    // TODO write better solution and parse transaction json
-    val outputs = txJson.hcursor.downField("outputs").as[List[Json]].getOrElse(throw new Throwable("Invalid transaction found")).toArray
-    val raffleBoxId = outputs(1).hcursor.downField("boxId").as[String].getOrElse("")
-    val tokenBoxId = outputs(2).hcursor.downField("boxId").as[String].getOrElse("")
-    val raffleBox = ctx.getBoxesById(raffleBoxId).head
-    val tokenBox = ctx.getBoxesById(tokenBoxId).head
-    val mergeTx = mergeRaffle(raffleBox, tokenBox)
-    val txId2 = ctx.sendTransaction(mergeTx)
-    createReqDAO.updateMergeTxId(req.id, txId2)
-    createReqDAO.updateStateById(req.id, 1)
-  }
-
   def nextStage(req: CreateReq): Int = {
     client.getClient.execute(ctx => {
       if (req.state == 0) {
@@ -181,13 +168,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         if (tx1Status == 0) {
           generateAndSendBothTx(ctx, req)
         } else if (tx1Status == 1) {
-          val tx2Status = utils.checkTransaction(req.mergeTxId.getOrElse(""))
-          if (tx2Status == 0) {
-            generateAndSendMergeTx(ctx, req)
-          } else if (tx2Status == 1) {
-            // both transactions mined and raffle is currently active
             createReqDAO.updateStateById(req.id, 2)
-          }
         }
         return 0
       }
@@ -195,4 +176,22 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
     })
   }
 
+  def independentMergeTxGeneration(): Unit ={
+    client.getClient.execute(ctx => {
+      val raffleWaitingTokenAdd = Address.fromErgoTree(addresses.getRaffleWaitingTokenContract().getErgoTree, Configs.networkType)
+      val raffleWaitingTokenBoxes = ctx.getCoveringBoxesFor(raffleWaitingTokenAdd, Configs.infBoxVal).getBoxes.asScala
+        .filter(_.getTokens.size()>0)
+        .filter(_.getTokens.get(0).getId.toString == Configs.token.service)
+      raffleWaitingTokenBoxes.foreach(box => {
+        val tokenId = new ErgoId(box.getRegisters.get(4).getValue.asInstanceOf[Coll[Byte]].toArray)
+        val tokenBoxId = explorer.getUnspentTokenBoxes(tokenId.toString, 0, 100)
+          .hcursor.downField("items").as[Seq[Json]].getOrElse(throw new Throwable("parse error")).head
+          .hcursor.downField("boxId").as[String].getOrElse(null)
+        val tokenBox = ctx.getBoxesById(tokenBoxId).head
+        val mergeTx = mergeRaffle(box, tokenBox)
+        val txId = ctx.sendTransaction(mergeTx)
+        logger.info("Merge Tx sent with txId: "+ txId)
+      })
+    })
+  }
 }
