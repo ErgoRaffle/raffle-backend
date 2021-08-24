@@ -11,6 +11,7 @@ object Configs extends ConfigHelper {
   lazy val explorerUrl: String = readKey("explorer.url")
 
   lazy val fee: Long = readKey("fee").toLong
+  lazy val minBoxErg: Long = readKey("minBoxErg").toLong
   lazy val serviceSecret: BigInteger = BigInt(readKey("service.secret"), 16).bigInteger
   lazy val serviceAddress: Address = Address.create(readKey("service.address"))
 

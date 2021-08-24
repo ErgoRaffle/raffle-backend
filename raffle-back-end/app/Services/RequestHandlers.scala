@@ -54,12 +54,6 @@ class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO,
       createReqDAO.updateTimeOut(req.id, currentTime + Configs.checkingDelay)
       req2 = createReqDAO.byId(req.id)
       logger.debug("Request is Ready, Executing the request with state: "+ req2.state)
-      //      updateServiceBox()
-      if(!createReqUtils.isValid(req2)){
-        createReqUtils.update(req2)
-        req2 = createReqDAO.byId(req2.id)
-        logger.debug("Request updated, with state: "+ req2.state)
-      }
       createReqUtils.nextStage(req2)
     }
   }

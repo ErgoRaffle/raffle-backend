@@ -46,9 +46,10 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         .withDLogSecret(Configs.serviceSecret)
         .build()
       val serviceBox = utils.getServiceBox()
-      val proxyBoxes = ctx.getUnspentBoxesFor(Address.create(req.paymentAddress), 0, 100).asScala.toSeq
-      val paymentBoxList = Seq(serviceBox) ++ proxyBoxes
-      val total = proxyBoxes.map(item => item.getValue).reduce((a, b) => a + b)
+      val paymentBoxList = ctx.getCoveringBoxesFor(Address.create(req.paymentAddress), Configs.fee*4)
+      if(!paymentBoxList.isCovered){
+        throw new Throwable("Payment not covered the fee")
+      }
       val outputServiceBox = txB.outBoxBuilder()
         .value(serviceBox.getValue)
         .contract(addresses.getRaffleServiceContract())
@@ -80,21 +81,17 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         .tokens(new ErgoToken(serviceBox.getId.getBytes, 1000000000L))
         .build()
 
-      var raffleCreateTxBuilder = txB.boxesToSpend(paymentBoxList.asJava)
-        .fee(Configs.fee)
+      var change = paymentBoxList.getCoveredAmount - Configs.fee*4
+      var fee = Configs.fee
+      if(change <= Configs.minBoxErg) fee += change
 
-      if (total > Configs.fee * 4) {
-        val changeOutput = txB.outBoxBuilder()
-          .value(total - Configs.fee * 4)
-          .contract(new ErgoTreeContract(Address.create(req.walletAddress).getErgoAddress.script))
-          .build()
-        raffleCreateTxBuilder = raffleCreateTxBuilder.outputs(outputServiceBox, outputRaffleBox, outputTokenIssueBox, changeOutput)
-      } else {
-        raffleCreateTxBuilder = raffleCreateTxBuilder.outputs(outputServiceBox, outputRaffleBox, outputTokenIssueBox)
-      }
-      val raffleCreateTx = raffleCreateTxBuilder
+      val inputBoxList = Seq(serviceBox) ++ paymentBoxList.getBoxes.asScala
+      val raffleCreateTx = txB.boxesToSpend(inputBoxList.asJava)
+        .fee(fee)
+        .outputs(outputServiceBox, outputRaffleBox, outputTokenIssueBox)
         .sendChangeTo(Address.create(req.walletAddress).getErgoAddress)
         .build()
+
       val signedCreateTx = prover.sign(raffleCreateTx)
       logger.debug("raffle created and sent to network waiting to merge tokens to it")
       signedCreateTx
@@ -140,63 +137,24 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
           return true
         }
       } else if (req.state == 1) {
-        return checkTransaction(req.createTxId.getOrElse("")) == 0 || checkTransaction(req.mergeTxId.getOrElse("")) == 0
+        return utils.checkTransaction(req.createTxId.getOrElse("")) == 0 || utils.checkTransaction(req.mergeTxId.getOrElse("")) == 0
       }
       return false
     })
   }
 
-  def isValid(req: CreateReq): Boolean = {
-    if (req.state == 0) return false
-    else if (req.state == 1 || req.state == 2) {
-      // TODO: Update the code to query the database and check chained service box
-      //      if (req.newServiceBox == serviceBox.getId.toString) return true
-      //      logger.debug("Service Box have Changed, Transaction should be created with new box.")
-      //      logger.debug("new service box: ", relatedServiceBox, "old service box: ", serviceBox)
-      return false
-    }
-    false
-  }
-
-  def update(req: CreateReq): Unit = {
-    logger.debug("updating the request")
-    if (req.state == 0) {
-      //      val signedTxJson: Option[String] = raffleTokenIssue(req)
-      //      addRaffle(req, signedTxJson)
-    }
-    else if (req.state == 1 || req.state == 2) {
-      client.getClient.execute(ctx => {
-        //        addRaffle(req, req.signedProxyTxJson)
-      })
-    }
-  }
-
-  def checkTransaction(txId: String): Int = {
-    if(txId != "") {
-      val unconfirmedTx = explorer.getUnconfirmedTx(txId)
-      if (unconfirmedTx == Json.Null) {
-        val confirmedTx = explorer.getConfirmedTx(txId)
-        if (confirmedTx == Json.Null) {
-          0 // resend transaction
-        } else {
-          1 // transaction mined
-        }
-      } else {
-        2 // transaction already in mempool
-      }
-    }else{
-      0
-    }
-  }
-
   def generateAndSendBothTx(ctx: BlockchainContext, req: CreateReq): Unit = {
-    val createTx = createRaffle(req)
-    val mergeTx = mergeRaffle(createTx.getOutputsToSpend.get(1), createTx.getOutputsToSpend.get(2))
-    ctx.sendTransaction(createTx)
-    ctx.sendTransaction(mergeTx)
-    createReqDAO.updateCreateTxID(req.id, createTx.getId)
-    createReqDAO.updateMergeTxId(req.id, mergeTx.getId)
-    createReqDAO.updateStateById(req.id, 1)
+    try {
+      val createTx = createRaffle(req)
+      val mergeTx = mergeRaffle(createTx.getOutputsToSpend.get(1), createTx.getOutputsToSpend.get(2))
+      ctx.sendTransaction(createTx)
+      ctx.sendTransaction(mergeTx)
+      createReqDAO.updateCreateTxID(req.id, createTx.getId)
+      createReqDAO.updateMergeTxId(req.id, mergeTx.getId)
+      createReqDAO.updateStateById(req.id, 1)
+    } catch {
+      case e:Throwable => logger.error(e.toString)
+    }
   }
 
   def generateAndSendMergeTx(ctx: BlockchainContext, req: CreateReq): Unit = {
@@ -219,11 +177,11 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         generateAndSendBothTx(ctx, req)
         return 0
       } else if (req.state == 1) {
-        val tx1Status = checkTransaction(req.createTxId.getOrElse(""))
+        val tx1Status = utils.checkTransaction(req.createTxId.getOrElse(""))
         if (tx1Status == 0) {
           generateAndSendBothTx(ctx, req)
         } else if (tx1Status == 1) {
-          val tx2Status = checkTransaction(req.mergeTxId.getOrElse(""))
+          val tx2Status = utils.checkTransaction(req.mergeTxId.getOrElse(""))
           if (tx2Status == 0) {
             generateAndSendMergeTx(ctx, req)
           } else if (tx2Status == 1) {

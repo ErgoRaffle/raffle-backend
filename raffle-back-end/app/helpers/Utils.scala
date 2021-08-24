@@ -150,6 +150,24 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
     })
   }
 
+  def checkTransaction(txId: String): Int = {
+    if(txId != "") {
+      val unconfirmedTx = explorer.getUnconfirmedTx(txId)
+      if (unconfirmedTx == Json.Null) {
+        val confirmedTx = explorer.getConfirmedTx(txId)
+        if (confirmedTx == Json.Null) {
+          0 // resend transaction
+        } else {
+          1 // transaction mined
+        }
+      } else {
+        2 // transaction already in mempool
+      }
+    }else{
+      0
+    }
+  }
+
   def isBoxInMemPool(box: InputBox, inputIndex: Int): Boolean = isBoxInMemPool(box, Seq(inputIndex))
 
   def isBoxInMemPool(box: InputBox, inputIndexes: Seq[Int]) : Boolean = {
