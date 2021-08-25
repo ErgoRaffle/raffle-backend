@@ -91,6 +91,7 @@ class Addresses @Inject()(client: Client, explorer: Explorer, utils: Utils, cont
       .item("raffleTokenIssueHash", tokenIssueScriptHash)
       .item("raffleServiceNFT", ErgoId.create(Configs.token.nft).getBytes)
       .item("raffleServiceToken", ErgoId.create(Configs.token.service).getBytes)
+      .item("ownerPK", Configs.serviceAddress.getPublicKey)
       .item("minFee", Configs.fee)
       .build(), contract.RaffleServiceScript)
   }

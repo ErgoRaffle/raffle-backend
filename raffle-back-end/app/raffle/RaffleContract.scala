@@ -8,7 +8,7 @@ object RaffleContract {
 
 }
 
-class RaffleContract @Inject()(){
+class RaffleContract @Inject()() {
 
   lazy val raffleTokenIssueRepo: String =
     s"""{
@@ -26,25 +26,15 @@ class RaffleContract @Inject()(){
 
   lazy val RaffleServiceScript: String =
     s"""{
-       |  if (OUTPUTS(0).propositionBytes == SELF.R5[Coll[Byte]].get) {
-       |    sigmaProp(
-       |      allOf(
-       |        Coll(
-       |          OUTPUTS(0).propositionBytes == SELF.R5[Coll[Byte]].get,
-       |          OUTPUTS(0).tokens(0)._1 == raffleServiceNFT,
-       |          OUTPUTS(0).tokens(1)._1 == raffleServiceToken,
-       |          OUTPUTS(0).tokens(1)._2 == SELF.tokens(1)._2,
-       |          OUTPUTS(0).value >= SELF.value - minFee
-       |        )
-       |      )
-       |    )
+       |  if (OUTPUTS(0).tokens(1)._2 == SELF.tokens(1)._2) {
+       |    ownerPK
        |  }else{
        |    if(OUTPUTS(0).tokens(1)._2 == SELF.tokens(1)._2 + 1L){
        |      sigmaProp(
        |        allOf(
        |          Coll(
        |            OUTPUTS(0).R5[Coll[Byte]].get == SELF.R5[Coll[Byte]].get,
-       |            OUTPUTS(0).R4[Long].get == SELF.R4[Long].get
+       |            OUTPUTS(0).R4[Long].get == SELF.R4[Long].get,
        |            OUTPUTS(0).propositionBytes == SELF.propositionBytes,
        |            OUTPUTS(0).tokens(0)._1 == raffleServiceNFT,
        |            OUTPUTS(0).tokens(1)._1 == raffleServiceToken,
@@ -75,7 +65,7 @@ class RaffleContract @Inject()(){
        |              // [Charity Coef, service Fee, TicketPrice, Goal, Deadline, TotalSoldTicket]
        |              OUTPUTS(1).R4[Coll[Long]].get.size == 6,
        |              OUTPUTS(1).R4[Coll[Long]].get(1) == SELF.R4[Long].get,
-       |              OUTPUTS(1).R4[Coll[Long]].get(0) > 0L
+       |              OUTPUTS(1).R4[Coll[Long]].get(0) > 0L,
        |              // Charity Coef + service fee < 100L (winner percent is required)
        |              OUTPUTS(1).R4[Coll[Long]].get(0) + OUTPUTS(1).R4[Coll[Long]].get(1) < 100L,
        |              // no sold ticket at begining
@@ -100,13 +90,13 @@ class RaffleContract @Inject()(){
        |  }
        |}""".stripMargin
 
-  lazy val ticketScript : String =
+  lazy val ticketScript: String =
     s"""{
        |  //winner reward. must pay back service token to servicebox we have 3 input boxes in this condition
        |  if (HEIGHT < SELF.R5[Coll[Long]].get(2)){
        |    // raffle does not completed
        |    sigmaProp(false)
-       |  }else if (INPUTS.size == 3) {
+       |  } else if (INPUTS.size == 3) {
        |    // Winner
        |    sigmaProp(
        |      allOf(
@@ -292,8 +282,8 @@ class RaffleContract @Inject()(){
        |        OUTPUTS(0).tokens(1)._2 == SELF.tokens(0)._2 + INPUTS(0).tokens(1)._2,
        |        INPUTS(1).id == SELF.id,
        |        INPUTS(2).tokens(0)._1 == SELF.tokens(1)._1,
-       |        INPUTS(2).R5[Coll[Long]].get(0) < winNumber,
-       |        INPUTS(2).R5[Coll[Long]].get(1) >= winNumber,
+       |        INPUTS(2).R5[Coll[Long]].get(0) <= winNumber,
+       |        INPUTS(2).R5[Coll[Long]].get(1) > winNumber,
        |      )
        |    )
        |  )
@@ -366,7 +356,7 @@ class RaffleContract @Inject()(){
        |  )
        |}""".stripMargin
 
-  lazy val donateScript : String =
+  lazy val donateScript: String =
     s"""{
        |  val returnDonates = {
        |    val total = INPUTS.fold(0L, {(x:Long, b:Box) => x + b.value})
