@@ -54,4 +54,10 @@ class Client @Inject()() {
     )
   }
 
+  def getAllUnspentBox(address: Address): List[InputBox] = {
+    client.execute(ctx =>
+      ctx.getCoveringBoxesFor(address, (1e9*1e8).toLong).getBoxes.asScala.toList
+    )
+  }
+
 }

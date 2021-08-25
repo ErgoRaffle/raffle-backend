@@ -4,6 +4,7 @@ import helpers.Configs
 import io.circe.Json
 import io.circe.parser.parse
 import javax.inject.Singleton
+import play.api.libs.json.{Json => playJson}
 import scalaj.http.{BaseHttp, HttpConstants}
 
 import scala.util.{Failure, Success, Try}
@@ -18,11 +19,20 @@ class Explorer() {
   private val boxesP1 = s"$tx/boxes"
   private val mempoolTransactions = s"$baseUrlV1/mempool/transactions/byAddress/"
 
-  def getAddressMempoolTransactions(address: String): Json = try {
+  def getTxsInMempoolByAddress(address: String): Json = try {
     GetRequest.httpGet(s"$mempoolTransactions/$address")
   }
   catch {
     case _: Throwable => Json.Null
+  }
+
+  def getNumberTxInMempoolByAddress(address: String): Int = try {
+    val newJson = getTxsInMempoolByAddress(address)
+    val js = playJson.parse(newJson.toString())
+    (js \ "total").as[Int]
+  }
+  catch {
+    case _: Throwable => 0
   }
 
   /**

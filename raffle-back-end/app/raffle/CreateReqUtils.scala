@@ -29,11 +29,10 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
                                charityAddr: String, goal: Long, ticketPrice: Long): String = {
     client.getClient.execute(ctx => {
       val paymentAddress = addresses.getRaffleCreateProxyContract(pk, charityPercent, name, description, deadlineHeight, charityAddr, goal, ticketPrice)
-      val currentTime = Calendar.getInstance().getTimeInMillis / 1000
       createReqDAO.insert(name, description, goal, deadlineHeight, charityPercent,
         charityAddr, ticketPrice, 0, pk, paymentAddress,
         null, null, 0, false,
-        Configs.inf + currentTime, Configs.creationDelay + currentTime)
+        Configs.inf + utils.currentTime, Configs.creationDelay + utils.currentTime)
 
       return paymentAddress
     })
@@ -128,11 +127,10 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
 
 
   def isReady(req: CreateReq): Boolean = {
-    val currentTime = Calendar.getInstance().getTimeInMillis / 1000
     client.getClient.execute(ctx => {
       val coveringList = ctx.getCoveringBoxesFor(Address.create(req.paymentAddress), 4*Configs.fee)
       if(coveringList.isCovered) {
-        createReqDAO.updateTTL(req.id, currentTime + Configs.creationDelay)
+        createReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
       }
       if (req.state == 0) {
         if(coveringList.isCovered) return true

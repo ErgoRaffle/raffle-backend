@@ -17,7 +17,7 @@ trait DonateReqComponent {
     def id = column[Long]("ID", O.PrimaryKey, O.AutoInc)
     def ticketCount = column[Long]("TICKET_COUNT")
     def ticketPrice = column[Long]("TICKET_PRICE")
-
+    def raffleDeadline = column[Long]("RAFFLE_DEADLINE")
     def state = column[Int]("STATE")
     def paymentAddress = column[String]("PAYMENT_ADD")
     def raffleAddress = column[String]("RAFFLE_ADD")
@@ -29,7 +29,7 @@ trait DonateReqComponent {
     def ttl = column[Long]("TTL")
 
     // TODO: Set default values
-    def * = (id, ticketCount, ticketPrice, state, paymentAddress, raffleAddress,
+    def * = (id, ticketCount, ticketPrice, raffleDeadline, state, paymentAddress, raffleAddress,
       raffleToken, donateTxId.?, participantAddress, timeOut, ttl) <> (DonateReq.tupled, DonateReq.unapply)
   }
 
@@ -48,10 +48,10 @@ class DonateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
    * inserts a request into db
    *
    */
-  def insert(ticketCount:Long, ticketPrice: Long, state: Int, paymentAddress: String,
+  def insert(ticketCount:Long, ticketPrice: Long, raffleDeadline: Long , state: Int, paymentAddress: String,
              raffleAddress: String, raffleToken: String, signedDonateTx: Option[String],
              participantAddress: String, timeOut: Long, ttl: Long): Unit ={
-    val action = requests += DonateReq(1, ticketCount, ticketPrice, state, paymentAddress, raffleAddress, raffleToken,
+    val action = requests += DonateReq(1, ticketCount, ticketPrice, raffleDeadline, state, paymentAddress, raffleAddress, raffleToken,
       signedDonateTx, participantAddress, timeOut, ttl)
     Await.result(db.run(action).map(_ => ()), Duration.Inf)
   }
@@ -79,6 +79,10 @@ class DonateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
     val q = for { c <- requests if c.id === id } yield c.state
     val updateAction = q.update(state)
     db.run(updateAction)
+  }
+
+  def updateReq(id: Long, state: Int, txId: String, ttl: Long): Future[Int] = {
+    db.run(requests.filter(_.id === id).map(req => (req.state, req.donateTxId, req.ttl)).update((state, txId, ttl)))
   }
 
   def updateDonateTxId(id: Long, SDTx: String): Int = {
