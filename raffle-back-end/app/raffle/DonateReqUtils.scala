@@ -4,13 +4,13 @@ import java.util.Calendar
 
 import dao.DonateReqDAO
 import helpers.{Configs, Utils}
-import io.circe.Json
+//import io.circe.Json
+import play.api.libs.json._
 import javax.inject.Inject
 import models.DonateReq
 import network.{Client, Explorer}
 import org.ergoplatform.ErgoAddress
 import org.ergoplatform.appkit.{Address, BlockchainContext, ConstantsBuilder, ErgoId, ErgoToken, ErgoValue, InputBox}
-import org.ergoplatform.appkit.impl.ErgoTreeContract
 import special.collection.{Coll, CollOverArray}
 import play.api.Logger
 
@@ -26,28 +26,32 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
   def findProxyAddress(pk: String, raffleId: String, ticketCounts: Long): (String, Long) = {
     client.getClient.execute(ctx => {
 
-      val propByte = new ErgoTreeContract(Address.create(pk).getErgoAddress.script)
+      val raffleBox = utils.getRaffleBox(raffleId)
+
+      val r4 = raffleBox.getRegisters.get(0).getValue.asInstanceOf[CollOverArray[Long]].toArray.clone()
+      val ticketPrice = r4(2)
+      val expectedDonate = (ticketPrice * ticketCounts) + (Configs.fee * 2)
+      val raffleDeadline = r4(4)
+
       val donateContract = ctx.compileContract(
         ConstantsBuilder.create()
           .item("tokenId", ErgoId.create(raffleId).getBytes)
-          .item("pk", propByte.getErgoTree.bytes)
+          .item("userAddress", Address.create(pk).getErgoAddress.script.bytes)
           .item("ticketCount", ticketCounts)
+          .item("minFee", Configs.fee)
+          .item("expectedDonate", expectedDonate)
+          .item("raffleDeadline", raffleDeadline)
           .build(),
         raffleContract.donateScript)
+
       val feeEmissionAddress: ErgoAddress = Configs.addressEncoder.fromProposition(donateContract.getErgoTree).get
 
-      val raffleBox = utils.getRaffleBox(raffleId)
+      donateReqDAO.insert(ticketCounts, expectedDonate, raffleDeadline, 0, feeEmissionAddress.toString, "nothing", raffleId,
+        null, pk, utils.currentTime + Configs.inf, utils.currentTime + Configs.creationDelay)
 
       logger.debug("Donate payment address created")
-      val r4 = raffleBox.getRegisters.get(0).getValue.asInstanceOf[CollOverArray[Long]].toArray.clone()
-      val ticketPrice = r4(2)
-      val fee = (ticketPrice * ticketCounts) + (Configs.fee * 2)
 
-      val currentTime = Calendar.getInstance().getTimeInMillis / 1000
-      donateReqDAO.insert(ticketCounts, fee, 0, feeEmissionAddress.toString, "nothing", raffleId,
-        null, pk, currentTime + Configs.inf, currentTime + Configs.creationDelay)
-
-      return (feeEmissionAddress.toString, fee)
+      return (feeEmissionAddress.toString, expectedDonate)
     })
   }
 
@@ -59,6 +63,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
 
       val paymentBoxList = ctx.getCoveringBoxesFor(Address.create(req.paymentAddress), req.fee)
       logger.debug(paymentBoxList.getCoveredAmount.toString +" "+ paymentBoxList.isCovered.toString)
+      // TODO: Add ChainTx for paymentBoxes
       if(!paymentBoxList.isCovered) return
 
       val txB = ctx.newTxBuilder()
@@ -88,7 +93,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
           new ErgoToken(raffleBox.getTokens.get(1).getId, req.ticketCount)
         )
         .registers(
-          ErgoValue.of(new ErgoTreeContract(Address.create(req.participantAddress).getErgoAddress.script).getErgoTree.bytes),
+          ErgoValue.of(Address.create(req.participantAddress).getErgoAddress.script.bytes),
           utils.longListToErgoValue(Array(ticketSold, ticketSold + req.ticketCount, deadlineHeight, ticketPrice))
         ).build()
 
@@ -116,7 +121,6 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
   }
 
   def isReady(req: DonateReq): Boolean = {
-    val currentTime = Calendar.getInstance().getTimeInMillis / 1000
     client.getClient.execute(ctx => {
       logger.debug("Request state : "+ req.state.toString)
       if (req.state == 0) {
@@ -124,8 +128,14 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         logger.debug(paymentBoxList.getCoveredAmount.toString +", "+ req.fee.toString)
         if(paymentBoxList.isCovered) {
           logger.debug("payment box found")
-          donateReqDAO.updateTTL(req.id, currentTime + Configs.creationDelay)
+          donateReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
           return true
+        }
+        else {
+          val numberTxInMempool = explorer.getNumberTxInMempoolByAddress(req.paymentAddress)
+          if (numberTxInMempool > 0){
+            donateReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
+          }
         }
       }
       else {

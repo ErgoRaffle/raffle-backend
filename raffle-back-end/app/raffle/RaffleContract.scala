@@ -345,7 +345,12 @@ class RaffleContract @Inject()(){
 
   lazy val createRaffleProxyScript: String =
     s"""{
-       |  PK ||
+       |  val returnCreateRaffleFee = {
+       |    OUTPUTS(0).value >= (INPUTS(0).value - minFee) && OUTPUTS(0).propositionBytes == userAddress // user must receive the appropriate amount, only refund transactions's fee must be deducted from user's funds
+       |    && HEIGHT > refundHeightThreshold && // The create raffle confirmation block has passed the refundHeightThreshold
+       |    OUTPUTS.size == 2 // only refund box and transaction fee box is needed
+       |  }
+       |  returnCreateRaffleFee ||
        |  sigmaProp(
        |    allOf(
        |      Coll(
@@ -363,10 +368,15 @@ class RaffleContract @Inject()(){
 
   lazy val donateScript : String =
     s"""{
-       |  proveDlog(decodePoint(pk)) ||
-       |  sigmaProp((OUTPUTS(1).R4[Coll[Byte]].get == pk) &&
-       |            (INPUTS(0).tokens(1)._1  == tokenId) &&
-       |            (OUTPUTS(1).tokens(0)._2 == ticketCount))
+       |  val returnDonates = {
+       |    val total = INPUTS.fold(0L, {(x:Long, b:Box) => x + b.value})
+       |    OUTPUTS(0).value >= (total - minFee) && OUTPUTS(0).propositionBytes == userAddress // user must receive the appropriate amount, only refund transactions's fee must be deducted from user's funds
+       |    && (total < expectedDonate || HEIGHT > raffleDeadline) && // either the total amount of donated is less than expectedDonate Or the donate confirmation block has passed the Deadline Raffle
+       |    OUTPUTS.size == 2 // only refund box and transaction fee box is needed
+       |  }
+       |  val dAppConditions = (OUTPUTS(1).R4[Coll[Byte]].get == userAddress) && (INPUTS(0).tokens(1)._1  == tokenId) && (OUTPUTS(1).tokens(0)._2 == ticketCount)
+       |
+       |  sigmaProp(dAppConditions || returnDonates)
        |}""".stripMargin
 
 }

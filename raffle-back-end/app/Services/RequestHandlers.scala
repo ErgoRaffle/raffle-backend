@@ -4,11 +4,12 @@ import java.util.Calendar
 
 import helpers.{Configs, Utils}
 import javax.inject.Inject
-import network.Client
+import network.{Client, Explorer}
 import play.api.Logger
-import raffle.{CreateReqUtils, DonateReqUtils, FinalizeReqUtils}
+import raffle.{CreateReqUtils, DonateReqUtils, FinalizeReqUtils, RaffleUtils}
 import dao.{CreateReqDAO, DonateReqDAO}
 import models.{CreateReq, DonateReq}
+import org.ergoplatform.appkit.Address
 
 import scala.concurrent._
 import ExecutionContext.Implicits.global
@@ -19,16 +20,15 @@ class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO,
 
   def handleReqs(): Unit = {
     logger.info("Handling Creation requests...")
-    val currentTime = Calendar.getInstance().getTimeInMillis / 1000
 
     createReqDAO.all.map(reqs => {
       reqs.foreach(req => {
         try {
-          if (req.ttl <= currentTime || req.state == 3) {
+          if (req.ttl <= utils.currentTime || req.state == 3) {
             handleRemoval(req)
           } else {
             logger.debug("Handling Creation Request with id: "+ req.id)
-            logger.debug("Current Time: "+currentTime+", Request timeout: "+req.timeOut+", Request ttl: "+req.ttl)
+            logger.debug("Current Time: "+utils.currentTime+", Request timeout: "+req.timeOut+", Request ttl: "+req.ttl)
             handleReq(req)
           }
         } catch {
@@ -49,10 +49,9 @@ class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO,
 
   def handleReq(req: CreateReq): Unit = {
     var req2 = req
-    val currentTime = Calendar.getInstance().getTimeInMillis / 1000
 
-    if(createReqUtils.isReady(req) || req.timeOut <= currentTime){
-      createReqDAO.updateTimeOut(req.id, currentTime + Configs.checkingDelay)
+    if(createReqUtils.isReady(req) || req.timeOut <= utils.currentTime){
+      createReqDAO.updateTimeOut(req.id, utils.currentTime + Configs.checkingDelay)
       req2 = createReqDAO.byId(req.id)
       logger.debug("Request is Ready, Executing the request with state: "+ req2.state)
       createReqUtils.nextStage(req2)
@@ -62,21 +61,20 @@ class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO,
 
 
 class DonateReqHandler@Inject ()(client: Client, donateReqDAO: DonateReqDAO,
-                                 utils: Utils, donateReqUtils: DonateReqUtils){
+                                 utils: Utils, donateReqUtils: DonateReqUtils, explorer: Explorer, raffleUtils: RaffleUtils){
   private val logger: Logger = Logger(this.getClass)
 
   def handleReqs(): Unit = {
     logger.info("DonateReq Handling requests...")
-    val currentTime = Calendar.getInstance().getTimeInMillis / 1000
 
     donateReqDAO.all.map(reqs => {
       reqs.foreach(req => {
         try {
-          if (req.ttl <= currentTime || req.state == 2) {
+          if (req.ttl <= utils.currentTime || req.state == 2) {
             handleRemoval(req)
           } else {
             logger.info("Handling Donation Request with id: "+ req.id)
-            logger.info("Current Time: "+currentTime+", Request timeout: "+req.timeOut+", Request ttl: "+req.ttl)
+            logger.info("Current Time: "+utils.currentTime+", Request timeout: "+req.timeOut+", Request ttl: "+req.ttl)
             handleReq(req)
           }
         } catch {
@@ -89,19 +87,36 @@ class DonateReqHandler@Inject ()(client: Client, donateReqDAO: DonateReqDAO,
   }
 
   def handleRemoval(req: DonateReq): Unit = {
-    logger.info(s"will remove donate request: ${req.id} with state: ${req.state}")
-    donateReqDAO.deleteById(req.id)
+    val unSpentPaymentBoxes = client.getAllUnspentBox(Address.create(req.paymentAddress))
+    val numberTxInMempool = explorer.getNumberTxInMempoolByAddress(req.paymentAddress)
+
+    if (unSpentPaymentBoxes.nonEmpty && numberTxInMempool == 0) {
+      raffleUtils.refundBoxes(unSpentPaymentBoxes, Address.create(req.participantAddress))
+      donateReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
+    }
+    else if (numberTxInMempool > 0){
+      // TODO: Add ChainTx for refund payments in mempool
+      donateReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
+    }
+    else {
+      logger.info(s"will remove donate request: ${req.id} with state: ${req.state}")
+      donateReqDAO.deleteById(req.id)
+    }
   }
 
   def handleReq(req: DonateReq): Unit = {
-    var req2 = req
-    val currentTime = Calendar.getInstance().getTimeInMillis / 1000
-
-    if(donateReqUtils.isReady(req) || req.timeOut <= currentTime){
-      donateReqDAO.updateTimeOut(req.id, currentTime + Configs.checkingDelay)
-      req2 = donateReqDAO.byId(req.id)
-      logger.info("Donate Request is Ready, Executing the request with state: "+ req2.state)
-      donateReqUtils.createDonateTx(req2)
+    if (donateReqUtils.isReady(req) || req.timeOut <= utils.currentTime) {
+      if (client.getHeight> req.raffleDeadline) {
+        logger.info("Start refund process for "+ req.id)
+        val unSpentPaymentBoxes = client.getAllUnspentBox(Address.create(req.paymentAddress))
+        val txId = raffleUtils.refundBoxes(unSpentPaymentBoxes, Address.create(req.participantAddress))
+        donateReqDAO.updateReq(req.id, 1, txId, utils.currentTime + Configs.creationDelay)
+        logger.info(s"Refund process done, for: ${req.id} with txId: ${txId}" )
+      }
+      else {
+        logger.info("Donate Request is Ready, Executing the request with state: "+ req.state)
+        donateReqUtils.createDonateTx(req)
+      }
     }
   }
 }

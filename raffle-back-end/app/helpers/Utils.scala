@@ -1,14 +1,16 @@
 package helpers
 
 import java.io.{PrintWriter, StringWriter}
+
 import javax.inject.{Inject, Singleton}
 import com.typesafe.config.ConfigFactory
 import io.circe.Json
 import network.{Client, Explorer}
 import org.ergoplatform.appkit.{Address, BlockchainContext, ErgoType, ErgoValue, InputBox, JavaHelpers}
 import special.collection.Coll
-
 import java.security.MessageDigest
+import java.util.Calendar
+
 import org.ergoplatform.ErgoAddress
 import sigmastate.serialization.ErgoTreeSerializer
 import network.GetRequest
@@ -28,34 +30,6 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
     sw.toString
   }
 
-  def getAPILink(APIName: String): String = {
-    return ConfigFactory.load().getString("API.unspentBoxesAPILink")
-  }
-
-  def getTokenId(): String = {
-    return ConfigFactory.load().getString("Token.raffleCreator")
-  }
-
-  def getBoxCreator(): String = {
-    return ConfigFactory.load().getString("Box.creatorBoxId")
-  }
-
-  def getOracleId(): String = {
-    return ConfigFactory.load().getString("Box.oracleId")
-  }
-
-  def SHA1(input: String): String = {
-    return MessageDigest
-      .getInstance("SHA-1")
-      .digest(input.getBytes("UTF-8"))
-      .map("%02x".format(_))
-      .mkString
-  }
-
-  def show(x: Option[String]) = x match {
-    case Some(s) => s
-    case None => "?"
-  }
 
   def getAddress(addressBytes: Array[Byte]): ErgoAddress = {
     val ergoTree = ErgoTreeSerializer.DefaultSerializer.deserializeErgoTree(addressBytes)
@@ -170,11 +144,11 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
 
   def isBoxInMemPool(box: InputBox, inputIndexes: Seq[Int]) : Boolean = {
     val address = getAddress(box.getErgoTree.bytes)
-    val transactions = explorer.getAddressMempoolTransactions(address.toString)
+    val transactions = explorer.getTxsInMempoolByAddress(address.toString)
     if(transactions != Json.Null) {
-      explorer.getAddressMempoolTransactions(address.toString).hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request")).exists(transaction => {
+      transactions.hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request")).exists(tx => {
         inputIndexes.exists(inputIndex => {
-          transaction.hcursor.downField("inputs").as[List[Json]].getOrElse(throw new Throwable("bad request")).toArray.apply(inputIndex).hcursor.downField("boxId").as[String].getOrElse(throw new Throwable("bad request")) == box.getId.toString
+          tx.hcursor.downField("inputs").as[List[Json]].getOrElse(throw new Throwable("bad request")).toArray.apply(inputIndex).hcursor.downField("boxId").as[String].getOrElse(throw new Throwable("bad request")) == box.getId.toString
         })
       })
     }else{
@@ -224,5 +198,7 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
   def validateTicketCounts(value: Long): Unit = {
     if (value < 1) throw new Throwable("Ticket counts should be positive")
   }
+
+  def currentTime: Long = Calendar.getInstance().getTimeInMillis / 1000
 
 }

@@ -6,14 +6,19 @@ import helpers.Configs
 import io.circe.Json
 import javax.inject.Inject
 import network.{Client, Explorer}
-import org.ergoplatform.appkit.ErgoValue
+import org.ergoplatform.appkit.impl.ErgoTreeContract
+import org.ergoplatform.appkit.{Address, ErgoToken, ErgoValue, InputBox}
+import play.api.Logger
 import sigmastate.serialization.ErgoTreeSerializer
 import special.collection.Coll
 
+import scala.collection.JavaConverters._
 import scala.collection.mutable.{ListBuffer, Seq}
 import scala.util.Try
 
 class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addresses) {
+
+  private val logger: Logger = Logger(this.getClass)
 
   def raffles(offset: Int, limit: Int): Json ={
     var raffleCount = 0
@@ -181,6 +186,38 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
       ("fee", Json.fromLong(fee)),
       ("currentHeight", Json.fromLong(currentHeight))
     ))
+  }
+
+  def refundBoxes(boxes: List[InputBox], address: Address): String = {
+    try {
+      client.getClient.execute(ctx => {
+        val prover = ctx.newProverBuilder()
+        .build()
+        var value: Long = 0L
+        var tokens: Seq[ErgoToken] = Seq()
+        boxes.foreach(box => {
+          value += box.getValue
+          if (box.getTokens.size() > 0) tokens = tokens ++ box.getTokens.asScala
+        })
+        val txB = ctx.newTxBuilder()
+          var outB = txB.outBoxBuilder()
+          outB = outB.value(value - Configs.fee)
+          outB = outB.contract(new ErgoTreeContract(address.getErgoAddress.script))
+
+          if (tokens.nonEmpty) outB = outB.tokens(tokens: _*)
+          val tx = txB.boxesToSpend(boxes.asJava)
+              .fee(Configs.fee)
+              .outputs(outB.build())
+              .sendChangeTo(address.getErgoAddress)
+              .build()
+          val signed = prover.sign(tx)
+          ctx.sendTransaction(signed)
+      })
+    } catch {
+      case e:Throwable =>
+        logger.error(e.toString)
+        ""
+    }
   }
 
 }

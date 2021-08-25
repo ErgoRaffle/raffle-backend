@@ -168,7 +168,9 @@ class Addresses @Inject()(client: Client, explorer: Explorer, utils: Utils, cont
                                    charityAddr: String, goal: Long, ticketPrice: Long): String = {
     client.getClient.execute((ctx: BlockchainContext) => {
       val proxyContract = ctx.compileContract(ConstantsBuilder.create()
-        .item("PK", Address.create(pk).getPublicKey)
+        .item("userAddress", Address.create(pk).getErgoAddress.script.bytes)
+        .item("minFee", Configs.fee)
+        .item("refundHeightThreshold", ctx.getHeight + ((Configs.creationDelay / 60 / 2) + 1).toLong)
         .item("charityCoef", charity)
         .item("ticketPrice", ticketPrice)
         .item("goal", goal)
