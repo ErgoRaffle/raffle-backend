@@ -29,7 +29,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
   }
 
   def exception(e: Throwable): Result = {
-    logger.error(utils.getStackTraceStr(e))
+    logger.error(e.getMessage)
     BadRequest(s"""{"success": false, "message": "${e.getMessage}"}""").as("application/json")
   }
 
@@ -168,7 +168,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
   }
 
   def getExplorer(): Action[AnyContent] = Action {
-    val explorer = Configs.explorerUrl
+    val explorer = Configs.explorerFront
 
     val result = Json.fromFields(List(
       ("explorerUrl", Json.fromString(explorer))

@@ -85,7 +85,7 @@ class Explorer() {
   }
 
   def getUnconfirmedTxByAddress(address: String): Json = try {
-    GetRequest.httpGet(s"$unconfirmedTx/byAddress/$address")
+    GetRequest.httpGet(s"$unconfirmedTx/byAddress/$address/?offset=0&limit=100")
   } catch {
     case _: Throwable => Json.Null
   }

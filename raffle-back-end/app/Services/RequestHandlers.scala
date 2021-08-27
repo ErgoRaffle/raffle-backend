@@ -1,7 +1,4 @@
 package Services
-
-import java.util.Calendar
-
 import helpers.{Configs, Utils}
 import javax.inject.Inject
 import network.{Client, Explorer}
@@ -11,8 +8,10 @@ import dao.{CreateReqDAO, DonateReqDAO}
 import models.{CreateReq, DonateReq}
 import org.ergoplatform.appkit.Address
 
+import scala.collection.JavaConverters._
 import scala.concurrent._
 import ExecutionContext.Implicits.global
+import scala.util.Try
 
 class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO,
                                  utils: Utils, createReqUtils: CreateReqUtils){
@@ -48,14 +47,14 @@ class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO,
   }
 
   def handleReq(req: CreateReq): Unit = {
-    var req2 = req
-
-    if(createReqUtils.isReady(req) || req.timeOut <= utils.currentTime){
-      createReqDAO.updateTimeOut(req.id, utils.currentTime + Configs.checkingDelay)
-      req2 = createReqDAO.byId(req.id)
-      logger.debug("Request is Ready, Executing the request with state: "+ req2.state)
-      createReqUtils.nextStage(req2)
+    try {
+      if (createReqUtils.isReady(req) || req.timeOut <= utils.currentTime) {
+        createReqDAO.updateTimeOut(req.id, utils.currentTime + Configs.checkingDelay)
+        logger.debug(s"Creation Request ${req.id} is Ready, Executing the request with state: " + req.state)
+        createReqUtils.nextStage(req)
+      }
     }
+    catch { case e: Throwable => logger.error(s"Creation request ${req.id} failed")}
   }
 }
 
@@ -73,8 +72,6 @@ class DonateReqHandler@Inject ()(client: Client, donateReqDAO: DonateReqDAO,
           if (req.ttl <= utils.currentTime || req.state == 2) {
             handleRemoval(req)
           } else {
-            logger.info("Handling Donation Request with id: "+ req.id)
-            logger.info("Current Time: "+utils.currentTime+", Request timeout: "+req.timeOut+", Request ttl: "+req.ttl)
             handleReq(req)
           }
         } catch {
@@ -84,15 +81,32 @@ class DonateReqHandler@Inject ()(client: Client, donateReqDAO: DonateReqDAO,
     }) recover {
       case e: Throwable => logger.error(utils.getStackTraceStr(e))
     }
+    logger.info("DonateReq Handling finished")
   }
 
   def handleRemoval(req: DonateReq): Unit = {
     val unSpentPaymentBoxes = client.getAllUnspentBox(Address.create(req.paymentAddress))
     val numberTxInMempool = explorer.getNumberTxInMempoolByAddress(req.paymentAddress)
+    logger.info("Trying to remove request " + req.id)
 
     if (unSpentPaymentBoxes.nonEmpty && numberTxInMempool == 0) {
-      raffleUtils.refundBoxes(unSpentPaymentBoxes, Address.create(req.participantAddress))
-      donateReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
+      try {
+        client.getClient.execute(ctx => {
+          val unSpentPaymentBoxes = ctx.getCoveringBoxesFor(Address.create(req.paymentAddress), Configs.infBoxVal)
+          if(unSpentPaymentBoxes.getCoveredAmount >= req.fee){
+            logger.info(s"Request ${req.id} is going back to the request pool, donation amount is enough")
+            donateReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
+            return
+          }
+          logger.info(s"Request ${req.id} donation is not enough (${unSpentPaymentBoxes.getCoveredAmount} < ${req.fee}) start refunding process for " + req.id)
+          val txId = raffleUtils.refundBoxes(unSpentPaymentBoxes.getBoxes.asScala.toList, Address.create(req.participantAddress))
+          donateReqDAO.updateReq(req.id, 1, txId, utils.currentTime + Configs.creationDelay)
+          logger.info(s"Refund process done, for: ${req.id} with txId: ${txId}")
+        })
+      } catch {
+        case e: scala.runtime.NonLocalReturnControl[_] =>
+        case e: Throwable => logger.error(s"Donation Request ${req.id} from ${req.participantAddress} with Donate Tx ${req.donateTxID} to the raffle ${req.raffleToken} failed refunding or checking")
+      }
     }
     else if (numberTxInMempool > 0){
       // TODO: Add ChainTx for refund payments in mempool
@@ -106,16 +120,33 @@ class DonateReqHandler@Inject ()(client: Client, donateReqDAO: DonateReqDAO,
 
   def handleReq(req: DonateReq): Unit = {
     if (donateReqUtils.isReady(req) || req.timeOut <= utils.currentTime) {
-      if (client.getHeight> req.raffleDeadline) {
-        logger.info("Start refund process for "+ req.id)
-        val unSpentPaymentBoxes = client.getAllUnspentBox(Address.create(req.paymentAddress))
-        val txId = raffleUtils.refundBoxes(unSpentPaymentBoxes, Address.create(req.participantAddress))
-        donateReqDAO.updateReq(req.id, 1, txId, utils.currentTime + Configs.creationDelay)
-        logger.info(s"Refund process done, for: ${req.id} with txId: ${txId}" )
+      donateReqDAO.updateTimeOut(req.id, utils.currentTime + Configs.checkingDelay)
+      var inMempool = false
+      Try {
+        if (utils.checkTransaction(req.donateTxID.get) == 2) {
+          logger.info(s"Donation Tx for request ${req.id} is already in Mempool skipping the process")
+          inMempool = true
+        }
       }
-      else {
-        logger.info("Donate Request is Ready, Executing the request with state: "+ req.state)
-        donateReqUtils.createDonateTx(req)
+      if(!inMempool) {
+        if (client.getHeight > req.raffleDeadline) {
+          try {
+            logger.info("Raffle deadline passed refunding request " + req.id)
+            val unSpentPaymentBoxes = client.getAllUnspentBox(Address.create(req.paymentAddress))
+            val txId = raffleUtils.refundBoxes(unSpentPaymentBoxes, Address.create(req.participantAddress))
+            donateReqDAO.updateReq(req.id, 1, txId, utils.currentTime + Configs.creationDelay)
+            logger.info(s"Refund process done, for: ${req.id} with txId: ${txId}")
+          } catch {
+            case e: Throwable => logger.error(s"Donation Request ${req.id} to the raffle ${req.raffleToken} refunding has failed")
+          }
+        }
+        else {
+          logger.info(s"Donation Request ${req.id} is Ready, Executing the request with state: " + req.state)
+          try donateReqUtils.createDonateTx(req)
+          catch {
+            case e: Throwable => logger.error(s"Donation failed for request ${req.id}")
+          }
+        }
       }
     }
   }

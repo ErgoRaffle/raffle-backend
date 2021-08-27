@@ -30,14 +30,13 @@ trait CreateReqComponent {
     def createTxId = column[String]("CREATE_TX_ID")
     def mergeTxId = column[String]("MERGE_TX_ID")
 
-    def chainedWith = column[Long]("CHAINED_WITH")
-    def isChained = column[Boolean]("IS_CHAINED")
     def timeOut = column[Long]("TIME_OUT")
     def ttl = column[Long]("TTL")
+    def deleted = column[Boolean]("DELETED")
 
     def * = (id, name, description, goal, deadlineHeight, charityPercent, charityAddr,
       ticketPrice, state, walletAddress, paymentAddress,
-      createTxId.?, mergeTxId.?, chainedWith, isChained, timeOut, ttl) <> (CreateReq.tupled, CreateReq.unapply)
+      createTxId.?, mergeTxId.?, timeOut, ttl, deleted) <> (CreateReq.tupled, CreateReq.unapply)
   }
 
 }
@@ -55,13 +54,11 @@ class CreateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
    * inserts a request into db
    *
    */
-  def insert(name: String, description: String, goal: Long,
-             deadlineHeight: Long, charityPercent: Int, charityAddr: String,
-             ticketPrice: Long, state: Int, walletAddress: String, paymentAddress: String,
-             createTxId: Option[String],  mergeTxId: Option[String],
-             chainedWith: Long, isChained: Boolean, timeOut: Long, ttl: Long): Future[Unit] ={
+  def insert(name: String, description: String, goal: Long, deadlineHeight: Long, charityPercent: Int,
+             charityAddr: String, ticketPrice: Long, state: Int, walletAddress: String, paymentAddress: String,
+             createTxId: Option[String],  mergeTxId: Option[String], timeOut: Long, ttl: Long): Future[Unit] ={
     val action = requests += CreateReq(1, name, description, goal, deadlineHeight, charityPercent, charityAddr,
-      ticketPrice, state, walletAddress, paymentAddress, createTxId, mergeTxId, chainedWith, isChained, timeOut, ttl)
+      ticketPrice, state, walletAddress, paymentAddress, createTxId, mergeTxId, timeOut, ttl, false)
     db.run(action.asTry).map( _ => ())
   }
 
@@ -69,20 +66,20 @@ class CreateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
    * all requests
    * @return list of CreateReq
    */
-  def all: Future[Seq[CreateReq]] = db.run(requests.result)
+  def all: Future[Seq[CreateReq]] = db.run(requests.filter(_.deleted === false).result)
 
   /**
    * @param id request id
    * @return request associated with the id
    */
-  def byId(id: Long): CreateReq = Await.result(db.run(requests.filter(req => req.id === id).result.head), Duration.Inf)
+  def byId(id: Long): CreateReq = Await.result(db.run(requests.filter(_.deleted === false).filter(req => req.id === id).result.head), Duration.Inf)
 
   /**
    * deletes by id
    *
    * @param id request id
    */
-  def deleteById(id: Long): Future[Int] = db.run(requests.filter(req => req.id === id).delete)
+  def deleteById(id: Long): Future[Int] = db.run(requests.filter(req => req.id === id).map(req => req.deleted).update(true))
 
   def updateStateById(id: Long, state: Int): Future[Int] = {
     val q = for { c <- requests if c.id === id } yield c.state

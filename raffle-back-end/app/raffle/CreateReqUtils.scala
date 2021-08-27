@@ -27,15 +27,20 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
 
   def CreateRaffleProxyAddress(pk: String, charityPercent: Int, name: String, description: String, deadlineHeight: Long,
                                charityAddr: String, goal: Long, ticketPrice: Long): String = {
-    client.getClient.execute(ctx => {
-      val paymentAddress = addresses.getRaffleCreateProxyContract(pk, charityPercent, name, description, deadlineHeight, charityAddr, goal, ticketPrice)
-      createReqDAO.insert(name, description, goal, deadlineHeight, charityPercent,
-        charityAddr, ticketPrice, 0, pk, paymentAddress,
-        null, null, 0, false,
-        Configs.inf + utils.currentTime, Configs.creationDelay + utils.currentTime)
-
-      return paymentAddress
-    })
+    try {
+      client.getClient.execute(ctx => {
+        val paymentAddress = addresses.getRaffleCreateProxyContract(pk, charityPercent, name, description, deadlineHeight, charityAddr, goal, ticketPrice)
+        createReqDAO.insert(name, description, goal, deadlineHeight, charityPercent, charityAddr, ticketPrice, 0, pk, paymentAddress,
+          null, null, Configs.inf + utils.currentTime, Configs.creationDelay + utils.currentTime)
+        paymentAddress
+      })
+    }
+    catch {
+      case e: Throwable => {
+        logger.error(utils.getStackTraceStr(e))
+        throw new Throwable("Error in payment address generation")
+      }
+    }
   }
 
   def createRaffle(req: CreateReq): SignedTransaction = {
@@ -152,7 +157,10 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
       createReqDAO.updateMergeTxId(req.id, mergeTx.getId)
       createReqDAO.updateStateById(req.id, 1)
     } catch {
-      case e:Throwable => logger.error(e.toString)
+      case e:Throwable => {
+        logger.error(utils.getStackTraceStr(e))
+        throw new Throwable("Error in new raffle creation")
+      }
     }
   }
 
@@ -187,8 +195,10 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
           .hcursor.downField("boxId").as[String].getOrElse(null)
         val tokenBox = ctx.getBoxesById(tokenBoxId).head
         val mergeTx = mergeRaffle(box, tokenBox)
-        val txId = ctx.sendTransaction(mergeTx)
-        logger.info("Merge Tx sent with txId: "+ txId)
+        if(utils.checkTransaction(mergeTx.getId) != 2) {
+          val txId = ctx.sendTransaction(mergeTx)
+          logger.info("Merge Tx sent with txId: " + txId)
+        }
       })
     })
   }

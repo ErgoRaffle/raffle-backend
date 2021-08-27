@@ -86,7 +86,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
         try {
           val r5Hex = box.hcursor.downField("additionalRegisters").as[Json].getOrElse(null).hcursor.downField("R5").as[Json].getOrElse(null).hcursor.downField("serializedValue").as[String].getOrElse("")
           val r5 = ErgoValue.fromHex(r5Hex).getValue.asInstanceOf[Coll[Long]].toArray
-          r5(0) < winNumber && r5(1) >= winNumber
+          r5(0) <= winNumber && r5(1) > winNumber
         } catch {
           case _: Throwable => false
         }
@@ -238,7 +238,9 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
       offset += 100
       remain = boxes.nonEmpty
     }
-    val tx = ctx.sendTransaction(redeemFailedRaffleToken(ctx, utils.getServiceBox(), raffle))
+    if(raffle.getRegisters.get(0).getValue.asInstanceOf[Coll[Long]].getOrElse(5, 100) == 0L) {
+      ctx.sendTransaction(redeemFailedRaffleToken(ctx, utils.getServiceBox(), raffle))
+    }
     true
   }
 

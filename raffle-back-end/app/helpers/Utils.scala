@@ -148,7 +148,11 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
     if(transactions != Json.Null) {
       transactions.hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request")).exists(tx => {
         inputIndexes.exists(inputIndex => {
-          tx.hcursor.downField("inputs").as[List[Json]].getOrElse(throw new Throwable("bad request")).toArray.apply(inputIndex).hcursor.downField("boxId").as[String].getOrElse(throw new Throwable("bad request")) == box.getId.toString
+          val inputs = transactions.hcursor.downField("inputs").as[List[Json]].getOrElse(throw new Throwable("bad request")).toArray
+          if(inputs.length > inputIndex) {
+            inputs(inputIndex).hcursor.downField("boxId").as[String].getOrElse(throw new Throwable("bad request")) == box.getId.toString
+          }
+          false
         })
       })
     }else{

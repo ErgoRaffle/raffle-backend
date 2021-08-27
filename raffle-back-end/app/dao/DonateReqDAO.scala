@@ -27,10 +27,11 @@ trait DonateReqComponent {
 
     def timeOut = column[Long]("TIME_OUT")
     def ttl = column[Long]("TTL")
+    def deleted = column[Boolean]("DELETED")
 
     // TODO: Set default values
     def * = (id, ticketCount, ticketPrice, raffleDeadline, state, paymentAddress, raffleAddress,
-      raffleToken, donateTxId.?, participantAddress, timeOut, ttl) <> (DonateReq.tupled, DonateReq.unapply)
+      raffleToken, donateTxId.?, participantAddress, timeOut, ttl, deleted) <> (DonateReq.tupled, DonateReq.unapply)
   }
 
 }
@@ -52,7 +53,7 @@ class DonateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
              raffleAddress: String, raffleToken: String, signedDonateTx: Option[String],
              participantAddress: String, timeOut: Long, ttl: Long): Unit ={
     val action = requests += DonateReq(1, ticketCount, ticketPrice, raffleDeadline, state, paymentAddress, raffleAddress, raffleToken,
-      signedDonateTx, participantAddress, timeOut, ttl)
+      signedDonateTx, participantAddress, timeOut, ttl, false)
     Await.result(db.run(action).map(_ => ()), Duration.Inf)
   }
 
@@ -60,20 +61,20 @@ class DonateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
    * all requests
    * @return list of Req
    */
-  def all: Future[Seq[DonateReq]] = db.run(requests.result)
+  def all: Future[Seq[DonateReq]] = db.run(requests.filter(_.deleted === false).result)
 
   /**
    * @param id request id
    * @return request associated with the id
    */
-  def byId(id: Long): DonateReq = Await.result(db.run(requests.filter(req => req.id === id).result.head), Duration.Inf)
+  def byId(id: Long): DonateReq = Await.result(db.run(requests.filter(req => req.id === id).filter(_.deleted === false).result.head), Duration.Inf)
 
   /**
    * deletes by id
    *
    * @param id request id
    */
-  def deleteById(id: Long): Future[Int] = db.run(requests.filter(req => req.id === id).delete)
+  def deleteById(id: Long): Future[Int] = db.run(requests.filter(req => req.id === id).map(req => req.deleted).update(true))
 
   def updateStateById(id: Long, state: Int): Future[Int] = {
     val q = for { c <- requests if c.id === id } yield c.state

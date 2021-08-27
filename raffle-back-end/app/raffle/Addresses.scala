@@ -176,10 +176,9 @@ class Addresses @Inject()(client: Client, explorer: Explorer, utils: Utils, cont
         .item("ticketPrice", ticketPrice)
         .item("goal", goal)
         .item("deadlineHeight", deadlineHeight)
-        .item("charityAddress", deadlineHeight)
         .item("raffleServiceNFT", ErgoId.create(Configs.token.nft).getBytes)
         .item("raffleServiceToken", ErgoId.create(Configs.token.service).getBytes)
-        .item("charityAddress", new ErgoTreeContract(Address.create(charityAddr).getErgoAddress.script).getErgoTree.bytes)
+        .item("charityAddress", Address.create(charityAddr).getErgoAddress.script.bytes)
         .build(), contract.createRaffleProxyScript)
       Configs.addressEncoder.fromProposition(proxyContract.getErgoTree).get.toString
     })

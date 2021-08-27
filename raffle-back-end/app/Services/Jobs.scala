@@ -16,16 +16,16 @@ class Jobs(createReqHandler: CreateReqHandler, donateReqHandler: DonateReqHandle
 
   def receive = {
     case JobsUtil.create =>
-      createReqHandler.handleReqs()
       logger.info(s"Creation Request Thread is running")
+      createReqHandler.handleReqs()
 
     case JobsUtil.donate =>
-      donateReqHandler.handleReqs()
       logger.info(s"Donate Request Thread is running")
+      donateReqHandler.handleReqs()
 
     case JobsUtil.refund =>
-      refundReqHandler.handleReqs()
       logger.info(s"Refund Request Thread is running")
+      refundReqHandler.handleReqs()
   }
 
 }
