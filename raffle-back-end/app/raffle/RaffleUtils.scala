@@ -2,7 +2,7 @@ package raffle
 
 import java.nio.charset.StandardCharsets
 
-import helpers.{Configs, Utils}
+import helpers.{Configs, Utils, connectionException, explorerException, failedTxException, parseException}
 import io.circe.Json
 import javax.inject.Inject
 import network.{Client, Explorer}
@@ -80,6 +80,10 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
         ("currentHeight", Json.fromLong(currentHeight))
       ))
     } catch {
+      case e: connectionException => {
+        logger.warn(e.getMessage)
+        throw e
+      }
       case e: Throwable => {
         logger.error(utils.getStackTraceStr(e))
         throw new Throwable("Error occurred during responding the request")
@@ -96,7 +100,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
       var totalRecords: Long = 0
       do {
         val response = explorer.getUnspentTokenBoxes(raffleId, C, 100)
-        val tickets: Seq[Json] = response.hcursor.downField("items").as[Seq[Json]].getOrElse(null)
+        val tickets: Seq[Json] = response.hcursor.downField("items").as[Seq[Json]].getOrElse(throw parseException())
           .filter(_.hcursor.downField("assets").as[List[Json]].getOrElse(null).size == 1)
         total = response.hcursor.downField("total").as[Int].getOrElse(0)
         for (ticket <- tickets) {
@@ -126,6 +130,11 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
         ("total", Json.fromLong(totalRecords))
       ))
     } catch {
+      case _: parseException => throw connectionException()
+      case e: connectionException => {
+        logger.warn(e.getMessage)
+        throw e
+      }
       case e: Throwable => {
         logger.error(utils.getStackTraceStr(e))
         throw new Throwable("Error occurred during responding the request")
@@ -135,13 +144,11 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
 
   def raffleByTokenId(tokenId: String): Json={
     try {
-      val raffleAdd = Configs.addressEncoder.fromProposition(addresses.getRaffleActiveContract().getErgoTree).get
       var boxes = explorer.getUnspentTokenBoxes(Configs.token.service, 0, 100)
-      var items = boxes.hcursor.downField("items").as[Seq[Json]].getOrElse(throw new Throwable("parse error"))
+      var items = boxes.hcursor.downField("items").as[Seq[Json]].getOrElse(throw parseException())
         .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).size > 1)
         .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).head
           .hcursor.downField("tokenId").as[String].getOrElse("") == Configs.token.service)
-        .filter(_.hcursor.downField("address").as[String].getOrElse("") == raffleAdd.toString)
 
       var c: Int = 1
       var item: Json = items.filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null)(1)
@@ -149,7 +156,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
 
       while (item == null) {
         boxes = explorer.getUnspentTokenBoxes(Configs.token.service, c * 100, 100)
-        items = boxes.hcursor.downField("items").as[Seq[Json]].getOrElse(throw new Throwable("parse error"))
+        items = boxes.hcursor.downField("items").as[Seq[Json]].getOrElse(throw parseException())
           .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).head
             .hcursor.downField("tokenId").as[String].getOrElse("")
             == Configs.token.service)
@@ -202,9 +209,14 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
         ("currentHeight", Json.fromLong(currentHeight))
       ))
     } catch {
+      case e: explorerException => {
+        logger.warn(e.getMessage)
+        throw connectionException()
+      }
+      case _: parseException => throw connectionException()
       case e: Throwable => {
         logger.error(utils.getStackTraceStr(e))
-        throw new Throwable("Error occurred during responding the request")
+        throw new Throwable("Something is wrong")
       }
     }
   }
@@ -232,9 +244,15 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
             .sendChangeTo(address.getErgoAddress)
             .build()
         val signed = prover.sign(tx)
-        ctx.sendTransaction(signed)
+        val txId = ctx.sendTransaction(signed)
+        if (txId == null) throw failedTxException(s"refund failed for address ${address.toString}")
+        else txId.replaceAll("\"", "")
       })
     } catch {
+      case e:failedTxException => {
+        logger.warn(e.getMessage)
+        throw failedTxException()
+      }
       case e:Throwable =>
         logger.error(utils.getStackTraceStr(e))
         throw new Throwable("Something is wrong on refunding")

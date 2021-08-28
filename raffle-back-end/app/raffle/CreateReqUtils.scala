@@ -1,25 +1,18 @@
 package raffle
 
-import java.util.Calendar
-
-import org.ergoplatform.appkit.impl.ScalaBridge
-import org.ergoplatform.restapi.client.ErgoTransaction
 import dao.CreateReqDAO
-import helpers.{Configs, Utils}
+import helpers.{Configs, Utils, connectionException, failedTxException, paymentNotCoveredException, proveException}
 import io.circe.{Json, parser}
 import network.{Client, Explorer}
 import javax.inject.Inject
 import models.CreateReq
 import org.ergoplatform.appkit.impl.{ErgoTreeContract, InputBoxImpl}
 import org.ergoplatform.appkit.{Address, BlockchainContext, ConstantsBuilder, ErgoId, ErgoToken, ErgoType, ErgoValue, InputBox, JavaHelpers, SignedTransaction}
-import scorex.crypto.hash.Digest32
-import io.circe.syntax._
 import play.api.Logger
 import special.collection.{Coll, CollOverArray}
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable.Seq
-import scala.util.control.Breaks.{break, breakable}
 
 class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, raffleContract: RaffleContract, addresses: Addresses,
                                createReqDAO: CreateReqDAO) {
@@ -47,13 +40,11 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
     client.getClient.execute(ctx => {
       val txB = ctx.newTxBuilder()
       val prover = ctx.newProverBuilder()
-        .withDLogSecret(Configs.serviceSecret)
         .build()
       val serviceBox = utils.getServiceBox()
-      val paymentBoxList = ctx.getCoveringBoxesFor(Address.create(req.paymentAddress), Configs.fee*4)
-      if(!paymentBoxList.isCovered){
-        throw new Throwable("Payment not covered the fee")
-      }
+      val paymentBoxList = client.getCoveringBoxesFor(Address.create(req.paymentAddress), Configs.fee*4)
+      if(!paymentBoxList.isCovered) throw paymentNotCoveredException(s"Creation payment for request ${req.id} not covered the fee, request state id ${req.state} and request tx is ${req.createTxId}")
+
       val outputServiceBox = txB.outBoxBuilder()
         .value(serviceBox.getValue)
         .contract(addresses.getRaffleServiceContract())
@@ -96,9 +87,17 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         .sendChangeTo(Address.create(req.walletAddress).getErgoAddress)
         .build()
 
-      val signedCreateTx = prover.sign(raffleCreateTx)
-      logger.debug("raffle created and sent to network waiting to merge tokens to it")
-      signedCreateTx
+      try {
+        val signedTx = prover.sign(raffleCreateTx)
+        logger.info(s"create tx for request ${req.id} proved successfully")
+        signedTx
+      } catch {
+        case e: Throwable => {
+          logger.error(utils.getStackTraceStr(e))
+          logger.error(s"create tx for request ${req.id} proving failed")
+          throw proveException()
+        }
+      }
     })
   }
 
@@ -106,7 +105,6 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
     client.getClient.execute((ctx: BlockchainContext) => {
       val txB = ctx.newTxBuilder()
       val prover = ctx.newProverBuilder()
-        .withDLogSecret(Configs.serviceSecret)
         .build()
       val raffleOutputBox = txB.outBoxBuilder()
         .value(Configs.fee * 2)
@@ -118,7 +116,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
           raffleBox.getRegisters.get(3),
         )
         .tokens(
-          new ErgoToken(Configs.token.service, 1),
+          raffleBox.getTokens.get(0),
           tokenBox.getTokens.get(0)
         ).build()
       val tx = txB.boxesToSpend(Seq(raffleBox, tokenBox).asJava)
@@ -126,37 +124,61 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         .outputs(raffleOutputBox)
         .sendChangeTo(Configs.serviceAddress.getErgoAddress)
         .build()
-      prover.sign(tx)
+      try {
+        val signedTx = prover.sign(tx)
+        logger.info(s"merge tx for raffle ${tokenBox.getTokens.get(0).getId} proved successfully")
+        signedTx
+      } catch {
+        case e: Throwable => {
+          logger.error(utils.getStackTraceStr(e))
+          logger.error(s"merge tx for raffle ${tokenBox.getTokens.get(0).getId} proving failed")
+          throw proveException()
+        }
+      }
     })
   }
 
 
   def isReady(req: CreateReq): Boolean = {
-    client.getClient.execute(ctx => {
-      val coveringList = ctx.getCoveringBoxesFor(Address.create(req.paymentAddress), 4*Configs.fee)
-      if(coveringList.isCovered) {
-        createReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
-      }
-      if (req.state == 0) {
-        if(coveringList.isCovered) return true
-      }
-      else if (req.state == 1) {
-        return utils.checkTransaction(req.createTxId.getOrElse("")) == 0
-      }
-      return false
-    })
+    val coveringList = client.getCoveringBoxesFor(Address.create(req.paymentAddress), 4*Configs.fee)
+    if(coveringList.isCovered) {
+      createReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
+    }
+    if (req.state == 0) {
+      if(coveringList.isCovered) return true
+    }
+    else if (req.state == 1) {
+      return utils.checkTransaction(req.createTxId.getOrElse("")) == 0
+    }
+    false
   }
 
   def generateAndSendBothTx(ctx: BlockchainContext, req: CreateReq): Unit = {
     try {
       val createTx = createRaffle(req)
-      val mergeTx = mergeRaffle(createTx.getOutputsToSpend.get(1), createTx.getOutputsToSpend.get(2))
-      ctx.sendTransaction(createTx)
-      ctx.sendTransaction(mergeTx)
-      createReqDAO.updateCreateTxID(req.id, createTx.getId)
-      createReqDAO.updateMergeTxId(req.id, mergeTx.getId)
+      var createTxId = ctx.sendTransaction(createTx)
+      if (createTxId == null) throw failedTxException(s"Creation transaction sending failed for ${req.id}")
+      else createTxId = createTxId.replaceAll("\"", "")
+      logger.info(s"Creation transaction ${createTxId} sent for ${req.id}")
+      createReqDAO.updateCreateTxID(req.id, createTxId)
       createReqDAO.updateStateById(req.id, 1)
+      val mergeTx = mergeRaffle(createTx.getOutputsToSpend.get(1), createTx.getOutputsToSpend.get(2))
+      var mergeTxId = ctx.sendTransaction(mergeTx)
+      if (mergeTxId == null) throw failedTxException(s"Merge transaction sending failed for ${req.id}")
+      else mergeTxId = mergeTxId.replaceAll("\"", "")
+      logger.info(s"Merge transaction ${mergeTxId} sent for ${req.id}")
+      createReqDAO.updateMergeTxId(req.id, mergeTxId)
     } catch {
+      case e: connectionException => throw e
+      case e: proveException => throw e
+      case e:failedTxException => {
+        logger.warn(e.getMessage)
+        throw e
+      }
+      case e:paymentNotCoveredException => {
+        logger.warn(e.getMessage)
+        throw e
+      }
       case e:Throwable => {
         logger.error(utils.getStackTraceStr(e))
         throw new Throwable("Error in new raffle creation")
@@ -185,19 +207,23 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
   def independentMergeTxGeneration(): Unit ={
     client.getClient.execute(ctx => {
       val raffleWaitingTokenAdd = Address.fromErgoTree(addresses.getRaffleWaitingTokenContract().getErgoTree, Configs.networkType)
-      val raffleWaitingTokenBoxes = ctx.getCoveringBoxesFor(raffleWaitingTokenAdd, Configs.infBoxVal).getBoxes.asScala
-        .filter(_.getTokens.size()>0)
+      val raffleWaitingTokenBoxes = client.getCoveringBoxesFor(raffleWaitingTokenAdd, Configs.infBoxVal).getBoxes.asScala
+        .filter(_.getTokens.size() > 0)
         .filter(_.getTokens.get(0).getId.toString == Configs.token.service)
       raffleWaitingTokenBoxes.foreach(box => {
-        val tokenId = new ErgoId(box.getRegisters.get(4).getValue.asInstanceOf[Coll[Byte]].toArray)
-        val tokenBoxId = explorer.getUnspentTokenBoxes(tokenId.toString, 0, 100)
-          .hcursor.downField("items").as[Seq[Json]].getOrElse(throw new Throwable("parse error")).head
-          .hcursor.downField("boxId").as[String].getOrElse(null)
-        val tokenBox = ctx.getBoxesById(tokenBoxId).head
-        val mergeTx = mergeRaffle(box, tokenBox)
-        if(utils.checkTransaction(mergeTx.getId) != 2) {
-          val txId = ctx.sendTransaction(mergeTx)
-          logger.info("Merge Tx sent with txId: " + txId)
+        try {
+          val tokenId = new ErgoId(box.getRegisters.get(4).getValue.asInstanceOf[Coll[Byte]].toArray)
+          val tokenBoxId = explorer.getUnspentTokenBoxes(tokenId.toString, 0, 100)
+            .hcursor.downField("items").as[Seq[Json]].getOrElse(throw new Throwable("parse error")).head
+            .hcursor.downField("boxId").as[String].getOrElse(null)
+          val tokenBox = ctx.getBoxesById(tokenBoxId).head
+          val mergeTx = mergeRaffle(box, tokenBox)
+          if (utils.checkTransaction(mergeTx.getId) != 2) {
+            val txId = ctx.sendTransaction(mergeTx)
+            logger.info(s"Merge Tx for raffle ${tokenId} sent with txId: " + txId)
+          }
+        } catch {
+          case e: Throwable => logger.warn(e.getMessage + s" in raffle mergeTx")
         }
       })
     })

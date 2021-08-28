@@ -1,6 +1,6 @@
 package network
 
-import helpers.Configs
+import helpers.{Configs, explorerException}
 import io.circe.Json
 import io.circe.parser.parse
 import javax.inject.Singleton
@@ -17,7 +17,7 @@ class Explorer() {
   private val unconfirmedTx = s"$baseUrlV0/transactions/unconfirmed"
   private val unspentBoxesByTokenId = s"$baseUrlV1/boxes/unspent/byTokenId"
   private val boxesP1 = s"$tx/boxes"
-  private val mempoolTransactions = s"$baseUrlV1/mempool/transactions/byAddress/"
+  private val mempoolTransactions = s"$baseUrlV1/mempool/transactions/byAddress"
 
   def getTxsInMempoolByAddress(address: String): Json = try {
     GetRequest.httpGet(s"$mempoolTransactions/$address")
@@ -103,7 +103,7 @@ object GetRequest{
     }
     match{
       case Success((200, responseReq)) => parse(responseReq.body)
-      case Success((responseHttpCode, responseReq)) => Left(new Exception(s"returned a error with http code $responseHttpCode and error ${responseReq.throwError}"))
+      case Success((responseHttpCode, responseReq)) => Left(explorerException(s"returned a error with http code $responseHttpCode and error ${responseReq.throwError}"))
       case Failure(exception) => Left(exception)
     }
   }

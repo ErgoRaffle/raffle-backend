@@ -1,11 +1,11 @@
 package network
 
 
-import helpers.{Configs, Utils}
-import org.ergoplatform.appkit.{Address, ErgoClient, InputBox, RestApiErgoClient}
+import helpers.{Configs, Utils, connectionException}
+import org.ergoplatform.appkit.{Address, CoveringBoxes, ErgoClient, InputBox, RestApiErgoClient}
 import play.api.Logger
-
 import javax.inject.{Inject, Singleton}
+
 import scala.collection.JavaConverters._
 
 @Singleton
@@ -34,14 +34,18 @@ class Client @Inject()() {
   }
 
   def getClient: ErgoClient = {
-    return client
+    client
   }
 
   /**
    * @return current height of the blockchain
    */
   def getHeight: Long = {
-    client.execute(ctx => ctx.getHeight)
+    try {
+      client.execute(ctx => ctx.getHeight)
+    } catch {
+      case _: Throwable => throw connectionException()
+    }
   }
 
   /**
@@ -50,13 +54,31 @@ class Client @Inject()() {
    */
   def getUnspentBox(address: Address): List[InputBox] = {
     client.execute(ctx =>
-      ctx.getUnspentBoxesFor(address, 0, 100).asScala.toList
+      try {
+        ctx.getUnspentBoxesFor(address, 0, 100).asScala.toList
+      } catch {
+        case _: Throwable => throw connectionException()
+      }
     )
   }
 
   def getAllUnspentBox(address: Address): List[InputBox] = {
     client.execute(ctx =>
-      ctx.getCoveringBoxesFor(address, (1e9*1e8).toLong).getBoxes.asScala.toList
+      try {
+        ctx.getCoveringBoxesFor(address, (1e9 * 1e8).toLong).getBoxes.asScala.toList
+      } catch {
+        case _: Throwable => throw connectionException()
+      }
+    )
+  }
+
+  def getCoveringBoxesFor(address: Address, amount: Long): CoveringBoxes = {
+    client.execute(ctx =>
+      try {
+        ctx.getCoveringBoxesFor(address, amount)
+      } catch {
+        case _: Throwable => throw connectionException()
+      }
     )
   }
 
