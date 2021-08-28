@@ -5,7 +5,6 @@ import io.circe.Json
 import io.circe.generic.codec.DerivedAsObjectCodec.deriveCodec
 import network.{Client, Explorer}
 import raffle.{Addresses, CreateReqUtils, DonateReqUtils, RaffleUtils}
-
 import play.api.Logger
 import play.api.libs.circe.Circe
 import play.api.mvc._
@@ -29,7 +28,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
   }
 
   def exception(e: Throwable): Result = {
-    logger.error(e.getMessage)
+    logger.warn(e.getMessage)
     BadRequest(s"""{"success": false, "message": "${e.getMessage}"}""").as("application/json")
   }
 
@@ -66,6 +65,12 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     catch {
       case e: Throwable => exception(e)
     }
+  }
+  def getServiceAddress(): Action[AnyContent] = Action { implicit request =>
+    val res = Json.fromFields(List(
+      ("service", Json.fromString(Configs.addressEncoder.fromProposition(addresses.getRaffleServiceContract().getErgoTree).get.toString)),
+    ))
+    Ok(res.toString).as("application/json")
   }
 
   /*

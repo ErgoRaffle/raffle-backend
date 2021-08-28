@@ -209,7 +209,7 @@ class RaffleContract @Inject()() {
        |        val charityAmount = totalRaised * charityCoef / 100L
        |        val serviceFeeAmount = totalRaised * serviceFee / 100L
        |        val winnerAmount = totalRaised - charityAmount - serviceFeeAmount + fee
-       |        val winNumber = ((byteArrayToBigInt(CONTEXT.dataInputs(0).id.slice(0, 15)).toBigInt + totalSoldTicketBI) % totalSoldTicketBI).toBigInt
+       |        val winNumber = (((byteArrayToBigInt(CONTEXT.dataInputs(0).id.slice(0, 15)).toBigInt % totalSoldTicketBI) + totalSoldTicketBI) % totalSoldTicketBI).toBigInt
        |        sigmaProp(
        |          allOf(
        |            Coll(

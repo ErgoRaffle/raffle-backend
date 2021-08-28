@@ -3,12 +3,10 @@ package helpers
 import java.io.{PrintWriter, StringWriter}
 
 import javax.inject.{Inject, Singleton}
-import com.typesafe.config.ConfigFactory
 import io.circe.Json
 import network.{Client, Explorer}
-import org.ergoplatform.appkit.{Address, BlockchainContext, ErgoType, ErgoValue, InputBox, JavaHelpers}
+import org.ergoplatform.appkit.{Address, BlockchainContext, ErgoType, ErgoValue, InputBox, JavaHelpers, ErgoClientException}
 import special.collection.Coll
-import java.security.MessageDigest
 import java.util.Calendar
 
 import org.ergoplatform.ErgoAddress
@@ -16,8 +14,18 @@ import sigmastate.serialization.ErgoTreeSerializer
 import network.GetRequest
 import play.api.Logger
 
-import scala.util.matching.Regex
 import scala.util.Try
+
+final case class InvalidRecaptchaException(private val message: String = "Invalid recaptcha") extends Throwable(message)
+final case class paymentNotCoveredException(private val message: String = "Payment not Covered") extends Throwable(message)
+final case class failedTxException(private val message: String = "Tx sending failed") extends Throwable(message)
+final case class explorerException(private val message: String = "Explorer error") extends Throwable(message)
+final case class connectionException(private val message: String = "Network Error") extends Throwable(message)
+final case class parseException(private val message: String = "Parsing failed") extends Throwable(message)
+final case class finishedRaffleException(private val message: String = "raffle finished") extends Throwable(message)
+final case class skipException(private val message: String = "skip") extends Throwable(message)
+final case class proveException(private val message: String = "Tx proving failed") extends Throwable(message)
+
 
 @Singleton
 class Utils @Inject()(client: Client, explorer: Explorer) {
@@ -41,126 +49,174 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
     ErgoValue.of(longColl, ErgoType.longType())
   }
 
-  def getRaffleBox(tokenId: String):InputBox = {
-    client.getClient.execute((ctx: BlockchainContext) => {
-      var raffleBoxId: String = ""
-      var C: Int = 0
-      while (raffleBoxId == "") {
-        Try {
-          val raffleBoxJson = explorer.getUnspentTokenBoxes(Configs.token.service, C, 100)
-          raffleBoxId = raffleBoxJson.hcursor.downField("items").as[List[Json]].getOrElse(null)
-            .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).size > 1)
-            .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null)(1)
-              .hcursor.downField("tokenId").as[String].getOrElse("") == tokenId).head
-            .hcursor.downField("boxId").as[String].getOrElse("")
-        }
-        C += 100
+  def findMempoolBox(address: String, box: InputBox, ctx: BlockchainContext): InputBox = {
+    try {
+      val mempool = explorer.getUnconfirmedTxByAddress(address)
+      var outBox = box
+      val txs = mempool.hcursor.downField("items").as[List[Json]].getOrElse(throw parseException())
+      var txMap: Map[String, Json] = Map()
+      txs.foreach(txJson => {
+        val txRaffleInput = txJson.hcursor.downField("inputs").as[List[Json]].getOrElse(throw parseException()).head
+        val id = txRaffleInput.hcursor.downField("id").as[String].getOrElse("")
+        txMap += (id -> txJson)
+      })
+      val keys = txMap.keys.toSeq
+      logger.debug(outBox.getId.toString)
+      logger.debug(keys.toString())
+      while (keys.contains(outBox.getId.toString)) {
+        val txJson = txMap(outBox.getId.toString).toString()
+        var newJson = txJson.replaceAll("id", "boxId")
+          .replaceAll("txId", "transactionId")
+          .replaceAll("null", "\"\"")
+        newJson = newJson.substring(0, 5) + "id" + newJson.substring(10)
+        val tmpTx = ctx.signedTxFromJson(newJson)
+        outBox = tmpTx.getOutputsToSpend.get(0)
       }
+      outBox
+    } catch {
+      case e: explorerException => {
+        logger.warn(e.getMessage)
+        throw connectionException()
+      }
+      case _: parseException => throw connectionException()
+      case e: Throwable => {
+        logger.error(getStackTraceStr(e))
+        throw new Throwable("Something is wrong")
+      }
+    }
+  }
 
-      var raffleBox = ctx.getBoxesById(raffleBoxId).head
-      val raffleAddress = Configs.addressEncoder.fromProposition(raffleBox.getErgoTree).get.toString
-      val mempool = explorer.getUnconfirmedTxByAddress(raffleAddress)
-      try {
-        val txs = mempool.hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request"))
-        var txMap: Map[String, Json] = Map()
-        txs.foreach(txJson => {
-          val txRaffleInput = txJson.hcursor.downField("inputs").as[List[Json]].getOrElse(throw new Throwable("bad response from explorer")).head
-          val id = txRaffleInput.hcursor.downField("id").as[String].getOrElse("")
-          txMap += (id -> txJson)
-        })
-        val keys = txMap.keys.toSeq
-        logger.debug(raffleBox.getId.toString)
-        logger.debug(keys.toString())
-        while (keys.contains(raffleBox.getId.toString)) {
-          val txJson = txMap(raffleBox.getId.toString).toString()
-          var newJson = txJson.replaceAll("id", "boxId")
-            .replaceAll("txId", "transactionId")
-            .replaceAll("null", "\"\"")
-          newJson = newJson.substring(0, 5) + "id" + newJson.substring(10)
-          val tmpTx = ctx.signedTxFromJson(newJson)
-          raffleBox = tmpTx.getOutputsToSpend.get(0)
+  def getRaffleBox(tokenId: String): InputBox = {
+    try {
+      client.getClient.execute((ctx: BlockchainContext) => {
+        var raffleBoxId: String = ""
+        var C: Int = 0
+        while (raffleBoxId == "") {
+          // TODO edit here
+          Try {
+            val raffleBoxJson = explorer.getUnspentTokenBoxes(Configs.token.service, C, 100)
+            raffleBoxId = raffleBoxJson.hcursor.downField("items").as[List[Json]].getOrElse(null)
+              .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).size > 1)
+              .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null)(1)
+                .hcursor.downField("tokenId").as[String].getOrElse("") == tokenId).head
+              .hcursor.downField("boxId").as[String].getOrElse("")
+          }
+          C += 100
         }
-      } catch {
-        case e: Throwable => logger.error(getStackTraceStr(e))
+        var raffleBox = ctx.getBoxesById(raffleBoxId).head
+        val raffleAddress = Configs.addressEncoder.fromProposition(raffleBox.getErgoTree).get.toString
+        Try {
+          raffleBox = findMempoolBox(raffleAddress, raffleBox, ctx)
+        }
+        raffleBox
+      })
+    } catch {
+      case e: ErgoClientException =>{
+        logger.warn(e.getMessage)
+        throw connectionException()
       }
-      raffleBox
-    })
+      case _: connectionException => throw connectionException()
+      case e: Throwable => {
+        logger.error(getStackTraceStr(e))
+        throw new Throwable("Something is wrong")
+      }
+    }
   }
 
   def getServiceBox(): InputBox = {
-    client.getClient.execute((ctx: BlockchainContext) => {
-      val serviceBoxJson = explorer.getUnspentTokenBoxes(Configs.token.nft, 0, 100)
-      val serviceBoxId = serviceBoxJson.hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request")).head.hcursor.downField("boxId").as[String].getOrElse("")
-      var serviceBox = ctx.getBoxesById(serviceBoxId).head
-      val serviceAddress = Configs.addressEncoder.fromProposition(serviceBox.getErgoTree).get.toString
-
-      val mempool = explorer.getUnconfirmedTxByAddress(serviceAddress)
-      try {
-        val txs = mempool.hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request"))
-        var txMap: Map[String, Json] = Map()
-        txs.foreach(txJson => {
-          val txServiceInput = txJson.hcursor.downField("inputs").as[List[Json]].getOrElse(throw new Throwable("bad response from explorer")).head
-          val id = txServiceInput.hcursor.downField("id").as[String].getOrElse("")
-          txMap += (id -> txJson)
-        })
-        val keys = txMap.keys.toSeq
-        logger.debug(serviceBox.getId.toString)
-        logger.debug(keys.toString())
-        while (keys.contains(serviceBox.getId.toString)) {
-          val txJson = txMap(serviceBox.getId.toString).toString()
-          var newJson = txJson.toString().replaceAll("id", "boxId")
-            .replaceAll("txId", "transactionId")
-            .replaceAll("null", "\"\"")
-          newJson = newJson.substring(0, 5) + "id" + newJson.substring(10)
-          val tmpTx = ctx.signedTxFromJson(newJson)
-          serviceBox = tmpTx.getOutputsToSpend.get(0)
+    try {
+      client.getClient.execute((ctx: BlockchainContext) => {
+        val serviceBoxJson = explorer.getUnspentTokenBoxes(Configs.token.nft, 0, 100)
+        val serviceBoxId = serviceBoxJson.hcursor.downField("items").as[List[Json]].getOrElse(throw parseException())
+          .head.hcursor.downField("boxId").as[String].getOrElse("")
+        var serviceBox = ctx.getBoxesById(serviceBoxId).head
+        val serviceAddress = Configs.addressEncoder.fromProposition(serviceBox.getErgoTree).get.toString
+        Try {
+          serviceBox = findMempoolBox(serviceAddress, serviceBox, ctx)
         }
-      } catch {
-        case e: Throwable => logger.debug(e.toString)
+        serviceBox
+      })
+    } catch {
+      case _: connectionException => throw connectionException()
+      case e: ErgoClientException =>{
+        logger.warn(e.getMessage)
+        throw connectionException()
       }
-      serviceBox
-    })
+      case e: explorerException => {
+        logger.warn(e.getMessage)
+        throw connectionException()
+      }
+      case _: parseException => throw connectionException()
+      case e: Throwable => {
+        logger.error(getStackTraceStr(e))
+        throw new Throwable("Something is wrong")
+      }
+    }
   }
 
   def checkTransaction(txId: String): Int = {
-    if(txId != "") {
-      val unconfirmedTx = explorer.getUnconfirmedTx(txId)
-      if (unconfirmedTx == Json.Null) {
-        val confirmedTx = explorer.getConfirmedTx(txId)
-        if (confirmedTx == Json.Null) {
-          0 // resend transaction
+    try {
+      if (txId != "") {
+        val unconfirmedTx = explorer.getUnconfirmedTx(txId)
+        if (unconfirmedTx == Json.Null) {
+          val confirmedTx = explorer.getConfirmedTx(txId)
+          if (confirmedTx == Json.Null) {
+            0 // resend transaction
+          } else {
+            1 // transaction mined
+          }
         } else {
-          1 // transaction mined
+          2 // transaction already in mempool
         }
       } else {
-        2 // transaction already in mempool
+        0
       }
-    }else{
-      0
+    } catch {
+      case e: explorerException => {
+        logger.warn(e.getMessage)
+        throw connectionException()
+      }
+      case e: Throwable => {
+        logger.error(getStackTraceStr(e))
+        throw new Throwable("Something is wrong")
+      }
     }
   }
 
   def isBoxInMemPool(box: InputBox, inputIndex: Int): Boolean = isBoxInMemPool(box, Seq(inputIndex))
 
   def isBoxInMemPool(box: InputBox, inputIndexes: Seq[Int]) : Boolean = {
-    val address = getAddress(box.getErgoTree.bytes)
-    val transactions = explorer.getTxsInMempoolByAddress(address.toString)
-    if(transactions != Json.Null) {
-      transactions.hcursor.downField("items").as[List[Json]].getOrElse(throw new Throwable("bad request")).exists(tx => {
-        inputIndexes.exists(inputIndex => {
-          val inputs = transactions.hcursor.downField("inputs").as[List[Json]].getOrElse(throw new Throwable("bad request")).toArray
-          if(inputs.length > inputIndex) {
-            inputs(inputIndex).hcursor.downField("boxId").as[String].getOrElse(throw new Throwable("bad request")) == box.getId.toString
-          }
-          false
+    try {
+      val address = getAddress(box.getErgoTree.bytes)
+      val transactions = explorer.getTxsInMempoolByAddress(address.toString)
+      if (transactions != Json.Null) {
+        transactions.hcursor.downField("items").as[List[Json]].getOrElse(throw parseException()).exists(tx => {
+          inputIndexes.exists(inputIndex => {
+            val inputs = tx.hcursor.downField("inputs").as[List[Json]].getOrElse(throw parseException()).toArray
+            if (inputs.length > inputIndex) {
+              inputs(inputIndex).hcursor.downField("boxId").as[String].getOrElse(throw parseException()) == box.getId.toString
+            }
+            false
+          })
         })
-      })
-    }else{
-      false
+      } else {
+        false
+      }
+    } catch {
+      case e: explorerException => {
+        logger.warn(e.getMessage)
+        throw connectionException()
+      }
+      case e: parseException => {
+        logger.warn(e.getMessage)
+        throw connectionException()
+      }
+      case e: Throwable => {
+        logger.error(getStackTraceStr(e))
+        throw new Throwable("Something is wrong")
+      }
     }
   }
-
-  final case class InvalidRecaptchaException(private val message: String = "Invalid recaptcha") extends Throwable(message)
 
   def verifyRecaptcha(response: String): Unit = {
     try{

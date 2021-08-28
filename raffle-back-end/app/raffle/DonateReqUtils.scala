@@ -1,12 +1,12 @@
 package raffle
 
 import dao.DonateReqDAO
-import helpers.{Configs, Utils}
+import helpers.{Configs, Utils, connectionException, failedTxException, finishedRaffleException, paymentNotCoveredException, proveException}
 import javax.inject.Inject
 import models.DonateReq
 import network.{Client, Explorer}
 import org.ergoplatform.ErgoAddress
-import org.ergoplatform.appkit.{Address, BlockchainContext, ConstantsBuilder, ErgoId, ErgoToken, ErgoValue, InputBox}
+import org.ergoplatform.appkit.{Address, BlockchainContext, ConstantsBuilder, ErgoId, ErgoToken, ErgoValue, InputBox, SignedTransaction}
 import special.collection.{Coll, CollOverArray}
 import play.api.Logger
 
@@ -28,7 +28,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         val expectedDonate = (ticketPrice * ticketCounts) + (Configs.fee * 2)
         val raffleDeadline = r4(4)
         if (raffleDeadline < ctx.getHeight) {
-          throw new Throwable("Raffle is finished")
+          throw finishedRaffleException(s"raffle ${raffleId} has finished can not create proxy address")
         }
 
         val donateContract = ctx.compileContract(
@@ -52,6 +52,8 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
       })
     }
     catch {
+      case e: finishedRaffleException => throw e
+      case e: connectionException => throw e
       case e: Throwable => {
         logger.error(utils.getStackTraceStr(e))
         throw new Throwable("Error in payment address generation")
@@ -66,10 +68,10 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         val r4 = raffleBox.getRegisters.get(0).getValue.asInstanceOf[CollOverArray[Long]].toArray.clone()
         val ticketPrice: Long = r4(2)
 
-        val paymentBoxList = ctx.getCoveringBoxesFor(Address.create(req.paymentAddress), req.fee)
+        val paymentBoxList = client.getCoveringBoxesFor(Address.create(req.paymentAddress), req.fee)
         logger.debug(paymentBoxList.getCoveredAmount.toString + " " + paymentBoxList.isCovered.toString)
         // TODO: Add ChainTx for paymentBoxes
-        if (!paymentBoxList.isCovered) throw new Throwable("Donation payment not covered the fee")
+        if (!paymentBoxList.isCovered) throw paymentNotCoveredException(s"Donation payment for request ${req.id} not covered the feerequest state id ${req.state} and request tx is ${req.donateTxID}")
 
         val txB = ctx.newTxBuilder()
         val deadlineHeight = r4(4)
@@ -115,47 +117,67 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         val prover = ctx.newProverBuilder()
           .build()
 
-        val signedTx = prover.sign(tx)
+        var signedTx: SignedTransaction = null
+        try {
+          signedTx = prover.sign(tx)
+          logger.debug(s"create tx for request ${req.id} proved successfully")
+        } catch {
+          case e: Throwable => {
+            logger.error(utils.getStackTraceStr(e))
+            logger.error(s"create tx for request ${req.id} proving failed")
+            throw proveException()
+          }
+        }
 
-        logger.debug("Donate Tx created with id: " + signedTx.getId)
-        val txId = ctx.sendTransaction(signedTx)
+        var txId = ctx.sendTransaction(signedTx)
+        if (txId == null) throw failedTxException(s"Donataion transaction sending failed for ${req.id}")
+        else txId = txId.replaceAll("\"", "")
         logger.info("Donate Transaction Sent with TxId: " + txId)
-        donateReqDAO.updateDonateTxId(req.id, signedTx.getId)
+        donateReqDAO.updateDonateTxId(req.id, txId)
         donateReqDAO.updateStateById(req.id, 1)
       })
     } catch {
-      case e:Throwable =>
+      case e: connectionException => throw e
+      case e: proveException => throw e
+      case e:failedTxException => {
+        logger.warn(e.getMessage)
+        throw failedTxException()
+      }
+      case e:paymentNotCoveredException => {
+        logger.warn(e.getMessage)
+        throw paymentNotCoveredException()
+      }
+      case e: Throwable =>
         logger.error(utils.getStackTraceStr(e))
         throw new Throwable("Something is wrong on donating")
     }
   }
 
   def isReady(req: DonateReq): Boolean = {
-    client.getClient.execute(ctx => {
-      logger.debug("Request state : "+ req.state.toString)
-      val paymentBoxList = ctx.getCoveringBoxesFor(Address.create(req.paymentAddress), req.fee)
-      logger.debug(paymentBoxList.getCoveredAmount.toString +", "+ req.fee.toString)
-      if(paymentBoxList.isCovered) {
+    logger.debug("Request state : "+ req.state.toString)
+    val paymentBoxList = client.getCoveringBoxesFor(Address.create(req.paymentAddress), req.fee)
+
+    logger.debug(paymentBoxList.getCoveredAmount.toString +", "+ req.fee.toString)
+    if(paymentBoxList.isCovered) {
+      donateReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
+    }
+    else {
+      val numberTxInMempool = explorer.getNumberTxInMempoolByAddress(req.paymentAddress)
+      if (numberTxInMempool > 0){
         donateReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
       }
-      else {
-        val numberTxInMempool = explorer.getNumberTxInMempoolByAddress(req.paymentAddress)
-        if (numberTxInMempool > 0){
-          donateReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
-        }
+    }
+    if (req.state == 0) {
+      if(paymentBoxList.isCovered) {
+        logger.info(s"Payment found for request ${req.id}")
+        return true
       }
-      if (req.state == 0) {
-        if(paymentBoxList.isCovered) {
-          logger.info(s"Payment found for request ${req.id}")
-          return true
-        }
+    }
+    else {
+      if(utils.checkTransaction(req.donateTxID.getOrElse("")) == 1){
+        donateReqDAO.updateStateById(req.id, 2)
       }
-      else {
-        if(utils.checkTransaction(req.donateTxID.getOrElse("")) == 1){
-          donateReqDAO.updateStateById(req.id, 2)
-        }
-      }
-    })
+    }
     false
   }
 }

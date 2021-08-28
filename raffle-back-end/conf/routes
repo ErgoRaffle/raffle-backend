@@ -6,7 +6,8 @@ GET     /api/raffle                                  controllers.HomeController.
 GET     /api/raffle/:tokenId                         controllers.HomeController.getRafflesByTokenId(tokenId: String)
 POST    /api/raffle/add                              controllers.HomeController.addRaffle
 POST    /api/raffle/donate                           controllers.HomeController.donateToId
-POST   /api/tickets                                  controllers.HomeController.getTickets()
+POST    /api/tickets                                 controllers.HomeController.getTickets()
+GET     /api/service/address                         controllers.HomeController.getServiceAddress()
 GET     /api/explorer                                controllers.HomeController.getExplorer()
 GET     /api/raffle_share                            controllers.HomeController.servicePercent()
 GET     /api/recaptcha                               controllers.HomeController.recaptchaKey()
