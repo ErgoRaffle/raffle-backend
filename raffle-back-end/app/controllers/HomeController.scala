@@ -5,6 +5,7 @@ import io.circe.Json
 import io.circe.generic.codec.DerivedAsObjectCodec.deriveCodec
 import network.{Client, Explorer}
 import raffle.{Addresses, CreateReqUtils, DonateReqUtils, RaffleUtils}
+
 import play.api.Logger
 import play.api.libs.circe.Circe
 import play.api.mvc._
@@ -66,12 +67,6 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       case e: Throwable => exception(e)
     }
   }
-  def getServiceAddress(): Action[AnyContent] = Action { implicit request =>
-    val res = Json.fromFields(List(
-      ("service", Json.fromString(Configs.addressEncoder.fromProposition(addresses.getRaffleServiceContract().getErgoTree).get.toString)),
-    ))
-    Ok(res.toString).as("application/json")
-  }
 
   /*
   {
@@ -96,6 +91,8 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       val captcha: String = request.body.hcursor.downField("captcha").as[String].getOrElse("")
       if(Configs.recaptchaKey != "not-set") utils.verifyRecaptcha(captcha)
 
+      if(name.length > 250) throw new Throwable("Name size limit is 250 characters")
+      if(description.length > 1000) throw new Throwable("Description size limit is 250 characters")
       utils.validateErgValue(ticketPrice)
       utils.validateErgValue(goal)
       utils.validateAddress(charityAddr, "charity")

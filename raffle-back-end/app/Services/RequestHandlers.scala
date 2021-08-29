@@ -45,8 +45,28 @@ class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO,
   }
 
   def handleRemoval(req: CreateReq): Unit = {
-    logger.info(s"will remove request: ${req.id} with state: ${req.state}")
-    createReqDAO.deleteById(req.id)
+    val unSpentPaymentBoxes = client.getAllUnspentBox(Address.create(req.paymentAddress))
+    logger.info("Trying to remove request " + req.id)
+
+    if (unSpentPaymentBoxes.nonEmpty) {
+      try {
+        val unSpentPaymentBoxes = client.getCoveringBoxesFor(Address.create(req.paymentAddress), Configs.infBoxVal)
+        if (unSpentPaymentBoxes.getCoveredAmount >= Configs.fee*4) {
+          logger.info(s"Request ${req.id} is going back to the request pool, creation fee is enough")
+          createReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
+          throw skipException()
+        }
+      } catch {
+        case _: connectionException => throw new Throwable
+        case _: failedTxException => throw new Throwable
+        case e: skipException => throw e
+        case _: Throwable => logger.error(s"Checking creation request ${req.id} failed")
+      }
+    }
+    else {
+      logger.info(s"will remove request: ${req.id} with state: ${req.state}")
+      createReqDAO.deleteById(req.id)
+    }
   }
 
   def handleReq(req: CreateReq): Unit = {
@@ -110,7 +130,7 @@ class DonateReqHandler@Inject ()(client: Client, donateReqDAO: DonateReqDAO,
         } catch {
           case _: connectionException => throw new Throwable
           case _: failedTxException => throw new Throwable
-          case e: skipException => throw e
+          case e: skipException =>
           case _: Throwable => logger.error(s"Failed donation refund for Request ${req.id} from ${req.participantAddress} with Donate Tx ${req.donateTxID} to the raffle ${req.raffleToken} failed refunding or checking")
         }
       }
@@ -134,13 +154,13 @@ class DonateReqHandler@Inject ()(client: Client, donateReqDAO: DonateReqDAO,
         donateReqDAO.updateTimeOut(req.id, utils.currentTime + Configs.checkingDelay)
         var inMempool = false
         Try {
-          if (utils.checkTransaction(req.donateTxID.get) == 2) {
-            logger.info(s"Donation Tx for request ${req.id} is already in Mempool skipping the process")
+          if (utils.checkTransaction(req.donateTxID.get) != 0) {
+            logger.info(s"Donation Tx for request ${req.id} is already in Mempool or mined successfully, skipping the process")
             inMempool = true
           }
         }
         if (!inMempool) {
-          if (client.getHeight > req.raffleDeadline) {
+          if (client.getHeight >= req.raffleDeadline) {
             try {
               logger.info("Raffle deadline passed refunding request " + req.id)
               val unSpentPaymentBoxes = client.getAllUnspentBox(Address.create(req.paymentAddress))

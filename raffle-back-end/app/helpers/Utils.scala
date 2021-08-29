@@ -3,9 +3,9 @@ package helpers
 import java.io.{PrintWriter, StringWriter}
 
 import javax.inject.{Inject, Singleton}
-import io.circe.Json
+import io.circe.{Json => ciJson}
 import network.{Client, Explorer}
-import org.ergoplatform.appkit.{Address, BlockchainContext, ErgoType, ErgoValue, InputBox, JavaHelpers, ErgoClientException}
+import org.ergoplatform.appkit.{Address, BlockchainContext, ErgoClientException, ErgoType, ErgoValue, InputBox, JavaHelpers, SignedTransaction}
 import special.collection.Coll
 import java.util.Calendar
 
@@ -13,6 +13,7 @@ import org.ergoplatform.ErgoAddress
 import sigmastate.serialization.ErgoTreeSerializer
 import network.GetRequest
 import play.api.Logger
+import play.api.libs.json._
 
 import scala.util.Try
 
@@ -49,27 +50,34 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
     ErgoValue.of(longColl, ErgoType.longType())
   }
 
+
   def findMempoolBox(address: String, box: InputBox, ctx: BlockchainContext): InputBox = {
     try {
-      val mempool = explorer.getUnconfirmedTxByAddress(address)
+      val mempool = Json.parse(explorer.getUnconfirmedTxByAddress(address).toString())
       var outBox = box
-      val txs = mempool.hcursor.downField("items").as[List[Json]].getOrElse(throw parseException())
-      var txMap: Map[String, Json] = Map()
+      val txs = (mempool \ "items").as[List[JsValue]]
+      var txMap: Map[String, JsValue] = Map()
       txs.foreach(txJson => {
-        val txRaffleInput = txJson.hcursor.downField("inputs").as[List[Json]].getOrElse(throw parseException()).head
-        val id = txRaffleInput.hcursor.downField("id").as[String].getOrElse("")
+        val txRaffleInput = (txJson \ "inputs").as[List[JsValue]].head
+        val id = (txRaffleInput \ "id").as[String]
         txMap += (id -> txJson)
       })
       val keys = txMap.keys.toSeq
       logger.debug(outBox.getId.toString)
       logger.debug(keys.toString())
       while (keys.contains(outBox.getId.toString)) {
-        val txJson = txMap(outBox.getId.toString).toString()
-        var newJson = txJson.replaceAll("id", "boxId")
-          .replaceAll("txId", "transactionId")
-          .replaceAll("null", "\"\"")
-        newJson = newJson.substring(0, 5) + "id" + newJson.substring(10)
-        val tmpTx = ctx.signedTxFromJson(newJson)
+        val txJson = txMap(outBox.getId.toString)
+        val inputs = (txJson \ "inputs").as[JsValue].toString().replaceAll("id", "boxId")
+        val outputs = (txJson \ "outputs").as[JsValue].toString().replaceAll("id", "boxId").replaceAll("txId", "transactionId")
+        val dataInputs = (txJson\ "dataInputs").as[JsValue].toString()
+        val id = (txJson \ "id").as[String]
+        val newJson = s"""{
+          "id" : "${id}",
+          "inputs" : ${inputs},
+          "dataInputs" : ${dataInputs},
+          "outputs" : ${outputs}
+          }"""
+        val tmpTx = ctx.signedTxFromJson(newJson.replaceAll("null", "\"\""))
         outBox = tmpTx.getOutputsToSpend.get(0)
       }
       outBox
@@ -94,10 +102,10 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
         while (raffleBoxId == "") {
           // TODO edit here
           Try {
-            val raffleBoxJson = explorer.getUnspentTokenBoxes(Configs.token.service, C, 100)
-            raffleBoxId = raffleBoxJson.hcursor.downField("items").as[List[Json]].getOrElse(null)
-              .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).size > 1)
-              .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null)(1)
+            val raffleBoxciJson = explorer.getUnspentTokenBoxes(Configs.token.service, C, 100)
+            raffleBoxId = raffleBoxciJson.hcursor.downField("items").as[List[ciJson]].getOrElse(null)
+              .filter(_.hcursor.downField("assets").as[Seq[ciJson]].getOrElse(null).size > 1)
+              .filter(_.hcursor.downField("assets").as[Seq[ciJson]].getOrElse(null)(1)
                 .hcursor.downField("tokenId").as[String].getOrElse("") == tokenId).head
               .hcursor.downField("boxId").as[String].getOrElse("")
           }
@@ -126,8 +134,8 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
   def getServiceBox(): InputBox = {
     try {
       client.getClient.execute((ctx: BlockchainContext) => {
-        val serviceBoxJson = explorer.getUnspentTokenBoxes(Configs.token.nft, 0, 100)
-        val serviceBoxId = serviceBoxJson.hcursor.downField("items").as[List[Json]].getOrElse(throw parseException())
+        val serviceBoxciJson = explorer.getUnspentTokenBoxes(Configs.token.nft, 0, 100)
+        val serviceBoxId = serviceBoxciJson.hcursor.downField("items").as[List[ciJson]].getOrElse(throw parseException())
           .head.hcursor.downField("boxId").as[String].getOrElse("")
         var serviceBox = ctx.getBoxesById(serviceBoxId).head
         val serviceAddress = Configs.addressEncoder.fromProposition(serviceBox.getErgoTree).get.toString
@@ -158,9 +166,9 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
     try {
       if (txId != "") {
         val unconfirmedTx = explorer.getUnconfirmedTx(txId)
-        if (unconfirmedTx == Json.Null) {
+        if (unconfirmedTx == ciJson.Null) {
           val confirmedTx = explorer.getConfirmedTx(txId)
-          if (confirmedTx == Json.Null) {
+          if (confirmedTx == ciJson.Null) {
             0 // resend transaction
           } else {
             1 // transaction mined
@@ -183,21 +191,14 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
     }
   }
 
-  def isBoxInMemPool(box: InputBox, inputIndex: Int): Boolean = isBoxInMemPool(box, Seq(inputIndex))
-
-  def isBoxInMemPool(box: InputBox, inputIndexes: Seq[Int]) : Boolean = {
+  def isBoxInMemPool(box: InputBox) : Boolean = {
     try {
       val address = getAddress(box.getErgoTree.bytes)
-      val transactions = explorer.getTxsInMempoolByAddress(address.toString)
-      if (transactions != Json.Null) {
-        transactions.hcursor.downField("items").as[List[Json]].getOrElse(throw parseException()).exists(tx => {
-          inputIndexes.exists(inputIndex => {
-            val inputs = tx.hcursor.downField("inputs").as[List[Json]].getOrElse(throw parseException()).toArray
-            if (inputs.length > inputIndex) {
-              inputs(inputIndex).hcursor.downField("boxId").as[String].getOrElse(throw parseException()) == box.getId.toString
-            }
-            false
-          })
+      val transactions = Json.parse(explorer.getTxsInMempoolByAddress(address.toString).toString())
+      if (transactions != null) {
+        (transactions \ "items").as[List[JsValue]].exists(tx =>{
+          if((tx \ "inputs").as[JsValue].toString().contains(box.getId.toString)) true
+          else false
         })
       } else {
         false

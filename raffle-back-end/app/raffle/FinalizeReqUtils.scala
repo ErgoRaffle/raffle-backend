@@ -11,6 +11,7 @@ import javax.inject.Inject
 import play.api.Logger
 
 import scala.collection.JavaConverters._
+import scala.util.Try
 
 
 class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
@@ -37,7 +38,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
       val totalSoldTicket = r4(5)
       val winBytes = box.getId.getBytes.slice(0, 15)
       val winNumber = (((BigInt(winBytes) % totalSoldTicket) + totalSoldTicket) % totalSoldTicket).toLong
-      logger.info(s"winner number is ${winNumber} in raffle ${raffleBox.getTokens.get(0).getId}")
+      logger.info(s"winner number is ${winNumber} in raffle ${raffleBox.getTokens.get(1).getId}")
       val totalEarning = ticketPrice * totalSoldTicket
       val charityAmount = charity * totalEarning / 100
       val serviceAmount = service * totalEarning / 100
@@ -73,12 +74,11 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
 
       try {
         val signedTx = prover.sign(tx)
-        logger.info(s"raffle ${raffleBox.getTokens.get(1).getId} final tx made successfully")
         signedTx
       } catch {
         case e: Throwable => {
-          logger.error(utils.getStackTraceStr(e))
           logger.error(s"raffle ${raffleBox.getTokens.get(1).getId} final tx proving failed")
+          logger.error(utils.getStackTraceStr(e))
           throw proveException()
         }
       }
@@ -91,8 +91,8 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
       }
       case e: proveException => throw e
       case e: Throwable => {
-        logger.error(utils.getStackTraceStr(e))
         logger.error(s"raffle ${raffleBox.getTokens.get(1).getId} final tx generation failed")
+        logger.error(utils.getStackTraceStr(e))
         throw e
       }
     }
@@ -164,20 +164,19 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
         .build()
       try {
         val signedTx = prover.sign(tx)
-        logger.info(s"raffle ${raffleBox.getTokens.get(1).getId} winner reward tx proved successfully")
         signedTx
       } catch {
         case e: Throwable => {
-          logger.error(utils.getStackTraceStr(e))
           logger.error(s"raffle ${raffleBox.getTokens.get(1).getId} winner reward tx proving failed")
+          logger.error(utils.getStackTraceStr(e))
           throw proveException()
         }
       }
     } catch {
       case _: connectionException => throw connectionException()
       case e: Throwable => {
-        logger.error(utils.getStackTraceStr(e))
         logger.error(s"raffle ${raffleBox.getTokens.get(1).getId.toString} winner reward withdraw tx generation failed")
+        logger.error(utils.getStackTraceStr(e))
         throw e
       }
     }
@@ -206,12 +205,11 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
         .build()
       try {
         val signedTx = prover.sign(tx)
-        logger.info(s"raffle ${raffleBox.getTokens.get(0).getId} final fail tx proved successfully")
         signedTx
       } catch {
         case e: Throwable => {
-          logger.error(utils.getStackTraceStr(e))
           logger.error(s"raffle ${raffleBox.getTokens.get(1).getId} final fail tx proving failed")
+          logger.error(utils.getStackTraceStr(e))
           throw proveException()
         }
       }
@@ -258,12 +256,11 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
       .build()
     try {
       val signedTx = prover.sign(tx)
-      logger.info(s"ticket with boxId ${donation.getId.toString} refund tx proved successfully")
       signedTx
     } catch {
       case e: Throwable => {
-        logger.error(utils.getStackTraceStr(e))
         logger.error(s"ticket with boxId ${donation.getId.toString} refund tx proving failed")
+        logger.error(utils.getStackTraceStr(e))
         throw proveException()
       }
     }
@@ -275,7 +272,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
       .build()
     val serviceOut = txB.outBoxBuilder()
       .value(serviceBox.getValue)
-      .contract(addresses.getRaffleServiceContract())
+      .contract(new ErgoTreeContract(serviceBox.getErgoTree))
       .tokens(
         serviceBox.getTokens.get(0),
         new ErgoToken(serviceBox.getTokens.get(1).getId, serviceBox.getTokens.get(1).getValue + raffleBox.getTokens.get(0).getValue)
@@ -292,12 +289,11 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
       .build()
     try {
       val signedTx = prover.sign(tx)
-      logger.info(s"raffle ${raffleBox.getTokens.get(1).getId} final redeem tx proved successfully")
       signedTx
     } catch {
       case e: Throwable => {
-        logger.error(utils.getStackTraceStr(e))
         logger.error(s"raffle ${raffleBox.getTokens.get(1).getId} final redeem tx proving failed")
+        logger.error(utils.getStackTraceStr(e))
         throw proveException()
       }
     }
@@ -308,6 +304,10 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
       var remain = true
       var offset = 0
       var newRaffle = raffle
+      val raffleAddress = Configs.addressEncoder.fromProposition(newRaffle.getErgoTree).get.toString
+      Try {
+        newRaffle = utils.findMempoolBox(raffleAddress, newRaffle, ctx)
+      }
       while (remain) {
         val boxes = explorer.getUnspentTokenBoxes(newRaffle.getTokens.get(1).getId.toString, offset, 100)
           .hcursor.downField("items").as[List[Json]].getOrElse(throw parseException())
@@ -317,22 +317,28 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
         }).foreach(ticket => {
           try {
             val donationBox = ctx.getBoxesById(ticket.hcursor.downField("boxId").as[String].getOrElse(throw parseException())).head
-            val refundTx = refundRaffle(ctx, newRaffle, donationBox)
-            var txId = ctx.sendTransaction(refundTx)
-            if (txId == null) throw failedTxException(s"ticket with boxId ${donationBox} in raffle ${raffle.getTokens.get(1).getId.toString} refund tx sending failed")
-            else txId = txId.replaceAll("\"", "")
-            logger.info(s"ticket with boxId ${donationBox} refunded successfully with txId ${txId}")
-            newRaffle = refundTx.getOutputsToSpend.get(0)
+            if(!utils.isBoxInMemPool(donationBox)) {
+              val refundTx = refundRaffle(ctx, newRaffle, donationBox)
+              var txId = ctx.sendTransaction(refundTx)
+              if (txId == null) throw failedTxException(s"ticket with boxId ${donationBox.getId} in raffle ${raffle.getTokens.get(1).getId.toString} refund tx sending failed")
+              else txId = txId.replaceAll("\"", "")
+              logger.info(s"ticket with boxId ${donationBox.getId} refunded successfully with txId ${txId}")
+              newRaffle = refundTx.getOutputsToSpend.get(0)
+            }
           } catch {
             case e: parseException => {
-              logger.error(utils.getStackTraceStr(e))
+              logger.warn(utils.getStackTraceStr(e))
               throw parseException()
             }
             case _: connectionException =>
             case _: proveException =>
-            case e: failedTxException => logger.error(e.getMessage)
+            case e: failedTxException => {
+              logger.warn(e.getMessage)
+              logger.warn("skipping chain refund transactions")
+              throw e
+            }
             case e: ErgoClientException => logger.warn(e.getMessage)
-            case e: Throwable => logger.error(e.getMessage)
+            case e: Throwable => logger.error(utils.getStackTraceStr(e))
           }
         })
         offset += 100
@@ -403,18 +409,16 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
 
   def processSingleRaffle(ctx: BlockchainContext, raffle: InputBox): Unit = {
     try {
-      if(!utils.isBoxInMemPool(raffle, Seq(0))) {
-        val r4 = raffle.getRegisters.get(0).getValue.asInstanceOf[Coll[Long]].toArray
-        val ticketPrice = r4(2)
-        val goal = r4(3)
-        val totalSoldTicket = r4(5)
-        val isSuccess = (totalSoldTicket * ticketPrice >= goal)
-        logger.info(s"processing raffle ${raffle.getTokens.get(1).getId} and successful ${isSuccess}")
-        if (isSuccess) {
-          processCompletedRaffle(ctx, raffle)
-        } else {
-          processFailedRaffle(ctx, raffle)
-        }
+      val r4 = raffle.getRegisters.get(0).getValue.asInstanceOf[Coll[Long]].toArray
+      val ticketPrice = r4(2)
+      val goal = r4(3)
+      val totalSoldTicket = r4(5)
+      val isSuccess = (totalSoldTicket * ticketPrice >= goal)
+      logger.info(s"processing raffle ${raffle.getTokens.get(1).getId} and goal achieving is ${isSuccess}")
+      if (isSuccess) {
+        processCompletedRaffle(ctx, raffle)
+      } else {
+        processFailedRaffle(ctx, raffle)
       }
     } catch {
       case e: Throwable => logger.error(utils.getStackTraceStr(e))
@@ -426,7 +430,9 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
       client.getAllUnspentBox(Address.create(Configs.addressEncoder.fromProposition(addresses.getRaffleActiveContract().getErgoTree).get.toString))
         .filter(box => {
           box.getRegisters.get(0).getValue.asInstanceOf[Coll[Long]].toArray(4) < ctx.getHeight
-        }).foreach(raffle => processSingleRaffle(ctx, raffle))
+        }).foreach(raffle => {
+        if (!utils.isBoxInMemPool(raffle)) processSingleRaffle(ctx, raffle)
+      })
     } catch {
       case e: connectionException => logger.warn(e.getMessage)
       case e: Throwable => logger.error(utils.getStackTraceStr(e))
@@ -436,11 +442,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
   def processRefundRaffles(ctx: BlockchainContext): Unit = {
     try {
       client.getAllUnspentBox(Address.create(Configs.addressEncoder.fromProposition(addresses.getRaffleRedeemContract().getErgoTree).get.toString))
-        .foreach(raffle => {
-        if (!utils.isBoxInMemPool(raffle, 1)) {
-          processRefundRaffle(ctx, raffle)
-        }
-      })
+        .foreach(raffle => processRefundRaffle(ctx, raffle))
     }
     catch {
       case _: connectionException =>
@@ -452,10 +454,13 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
     try {
       var serviceBox = utils.getServiceBox()
       client.getAllUnspentBox(Address.create(Configs.addressEncoder.fromProposition(addresses.getRaffleWinnerContract().getErgoTree).get.toString))
-        .foreach(raffle => {
-          if (!utils.isBoxInMemPool(raffle, 1)) {
-            val tx = withdrawReward(ctx, serviceBox, raffle)
-            ctx.sendTransaction(tx)
+        .foreach(winner => {
+          if (!utils.isBoxInMemPool(winner)) {
+            val tx = withdrawReward(ctx, serviceBox, winner)
+            var txId = ctx.sendTransaction(tx)
+            if (txId == null) throw failedTxException(s"winner box ${winner.getTokens.get(1).getId.toString} tx sending failed")
+            else txId = txId.replaceAll("\"", "")
+            logger.info(s"winner funding tx sent with txId ${txId}")
             serviceBox = tx.getOutputsToSpend.get(0)
           }
       })

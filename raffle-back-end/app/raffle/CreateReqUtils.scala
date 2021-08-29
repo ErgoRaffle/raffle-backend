@@ -47,7 +47,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
 
       val outputServiceBox = txB.outBoxBuilder()
         .value(serviceBox.getValue)
-        .contract(addresses.getRaffleServiceContract())
+        .contract(new ErgoTreeContract(serviceBox.getErgoTree))
         .tokens(
           new ErgoToken(Configs.token.nft, 1),
           new ErgoToken(Configs.token.service, serviceBox.getTokens.get(1).getValue - 1)
@@ -70,10 +70,13 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         .contract(addresses.getRaffleWaitingTokenContract())
         .tokens(new ErgoToken(Configs.token.service, 1))
         .registers(r4, r5, r6, r7, r8).build()
+
+      val tokenName = ErgoValue.of(s"Raffle_token: ${req.name}".getBytes("utf-8"))
       val outputTokenIssueBox = txB.outBoxBuilder()
         .value(Configs.fee)
         .contract(addresses.getRaffleTokenIssueContract())
         .tokens(new ErgoToken(serviceBox.getId.getBytes, 1000000000L))
+        .registers(tokenName, tokenName)
         .build()
 
       var change = paymentBoxList.getCoveredAmount - Configs.fee*4

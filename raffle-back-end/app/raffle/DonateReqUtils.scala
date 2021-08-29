@@ -71,7 +71,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         val paymentBoxList = client.getCoveringBoxesFor(Address.create(req.paymentAddress), req.fee)
         logger.debug(paymentBoxList.getCoveredAmount.toString + " " + paymentBoxList.isCovered.toString)
         // TODO: Add ChainTx for paymentBoxes
-        if (!paymentBoxList.isCovered) throw paymentNotCoveredException(s"Donation payment for request ${req.id} not covered the feerequest state id ${req.state} and request tx is ${req.donateTxID}")
+        if (!paymentBoxList.isCovered) throw paymentNotCoveredException(s"Donation payment for request ${req.id} not covered the fee, request state is ${req.state} and request tx is ${req.donateTxID.orNull}")
 
         val txB = ctx.newTxBuilder()
         val deadlineHeight = r4(4)

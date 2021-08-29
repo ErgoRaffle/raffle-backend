@@ -214,6 +214,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
         throw connectionException()
       }
       case _: parseException => throw connectionException()
+      case _: java.util.NoSuchElementException => throw new Throwable("No Raffle exist with this id")
       case e: Throwable => {
         logger.error(utils.getStackTraceStr(e))
         throw new Throwable("Something is wrong")
