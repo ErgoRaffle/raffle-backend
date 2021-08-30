@@ -1,5 +1,7 @@
 package raffle
 
+import java.time.LocalDateTime
+
 import dao.DonateReqDAO
 import helpers.{Configs, Utils, connectionException, failedTxException, finishedRaffleException, paymentNotCoveredException, proveException}
 import javax.inject.Inject
@@ -44,8 +46,8 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
 
         val feeEmissionAddress: ErgoAddress = Configs.addressEncoder.fromProposition(donateContract.getErgoTree).get
 
-        donateReqDAO.insert(ticketCounts, expectedDonate, raffleDeadline, 0, feeEmissionAddress.toString, "nothing", raffleId,
-          null, pk, utils.currentTime + Configs.inf, utils.currentTime + Configs.creationDelay)
+        donateReqDAO.insert(ticketCounts, expectedDonate, raffleDeadline, 0, feeEmissionAddress.toString, raffleId,
+          null, pk, LocalDateTime.now().toString, utils.currentTime + Configs.creationDelay)
         logger.debug("Donate payment address created")
 
         (feeEmissionAddress.toString, expectedDonate)
@@ -61,10 +63,9 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
     }
   }
 
-  def createDonateTx(req: DonateReq): Unit = {
+  def createDonateTx(req: DonateReq, raffleBox: InputBox): InputBox = {
     try {
       client.getClient.execute(ctx => {
-        val raffleBox = utils.getRaffleBox(req.raffleToken)
         val r4 = raffleBox.getRegisters.get(0).getValue.asInstanceOf[CollOverArray[Long]].toArray.clone()
         val ticketPrice: Long = r4(2)
 
@@ -135,6 +136,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         logger.info("Donate Transaction Sent with TxId: " + txId)
         donateReqDAO.updateDonateTxId(req.id, txId)
         donateReqDAO.updateStateById(req.id, 1)
+        signedTx.getOutputsToSpend.get(0)
       })
     } catch {
       case e: connectionException => throw e
@@ -174,9 +176,9 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
       }
     }
     else {
-      if(utils.checkTransaction(req.donateTxID.getOrElse("")) == 1){
-        donateReqDAO.updateStateById(req.id, 2)
-      }
+      val txState = utils.checkTransaction(req.donateTxID.getOrElse(""))
+      if(txState == 1) donateReqDAO.updateStateById(req.id, 2)
+      else if(txState == 0) return true
     }
     false
   }
