@@ -158,13 +158,12 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
 
   def recaptchaKey(): Action[AnyContent] = Action {
     val key = Configs.recaptchaPubKey
-    var required = ""
-    if(key == "not-set") required = "false"
-    else required = "true"
+    var required = true
+    if(key == "not-set") required = false
 
     val result = Json.fromFields(List(
       ("pubKey", Json.fromString(key)),
-      ("required", Json.fromString(required))
+      ("required", Json.fromBoolean(required))
     ))
     Ok(result.toString()).as("application/json")
   }
