@@ -20,18 +20,17 @@ trait DonateReqComponent {
     def raffleDeadline = column[Long]("RAFFLE_DEADLINE")
     def state = column[Int]("STATE")
     def paymentAddress = column[String]("PAYMENT_ADD")
-    def raffleAddress = column[String]("RAFFLE_ADD")
     def raffleToken = column[String]("RAFFLE_TOKEN")
     def donateTxId = column[String]("DONATE_TX_ID")
     def participantAddress = column[String]("PARTICIPANT_ADD")
 
-    def timeOut = column[Long]("TIME_OUT")
+    def timeStamp = column[String]("TIME_STAMP")
     def ttl = column[Long]("TTL")
     def deleted = column[Boolean]("DELETED")
 
     // TODO: Set default values
-    def * = (id, ticketCount, ticketPrice, raffleDeadline, state, paymentAddress, raffleAddress,
-      raffleToken, donateTxId.?, participantAddress, timeOut, ttl, deleted) <> (DonateReq.tupled, DonateReq.unapply)
+    def * = (id, ticketCount, ticketPrice, raffleDeadline, state, paymentAddress,
+      raffleToken, donateTxId.?, participantAddress, timeStamp, ttl, deleted) <> (DonateReq.tupled, DonateReq.unapply)
   }
 
 }
@@ -50,10 +49,9 @@ class DonateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
    *
    */
   def insert(ticketCount:Long, ticketPrice: Long, raffleDeadline: Long , state: Int, paymentAddress: String,
-             raffleAddress: String, raffleToken: String, signedDonateTx: Option[String],
-             participantAddress: String, timeOut: Long, ttl: Long): Unit ={
-    val action = requests += DonateReq(1, ticketCount, ticketPrice, raffleDeadline, state, paymentAddress, raffleAddress, raffleToken,
-      signedDonateTx, participantAddress, timeOut, ttl, false)
+             raffleToken: String, signedDonateTx: Option[String], participantAddress: String, timeStamp: String, ttl: Long): Unit ={
+    val action = requests += DonateReq(1, ticketCount, ticketPrice, raffleDeadline, state, paymentAddress, raffleToken,
+      signedDonateTx, participantAddress, timeStamp, ttl, false)
     Await.result(db.run(action).map(_ => ()), Duration.Inf)
   }
 
@@ -99,10 +97,5 @@ class DonateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
     Await.result(db.run(updateAction), Duration.Inf)
   }
 
-  def updateTimeOut(id: Long, time: Long): Int = {
-    val q = for { c <- requests if c.id === id } yield c.timeOut
-    val updateAction = q.update(time)
-    Await.result(db.run(updateAction), Duration.Inf)
-  }
 }
 

@@ -30,13 +30,13 @@ trait CreateReqComponent {
     def createTxId = column[String]("CREATE_TX_ID")
     def mergeTxId = column[String]("MERGE_TX_ID")
 
-    def timeOut = column[Long]("TIME_OUT")
+    def timeStamp = column[String]("TIME_STAMP")
     def ttl = column[Long]("TTL")
     def deleted = column[Boolean]("DELETED")
 
     def * = (id, name, description, goal, deadlineHeight, charityPercent, charityAddr,
       ticketPrice, state, walletAddress, paymentAddress,
-      createTxId.?, mergeTxId.?, timeOut, ttl, deleted) <> (CreateReq.tupled, CreateReq.unapply)
+      createTxId.?, mergeTxId.?, timeStamp, ttl, deleted) <> (CreateReq.tupled, CreateReq.unapply)
   }
 
 }
@@ -56,9 +56,9 @@ class CreateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
    */
   def insert(name: String, description: String, goal: Long, deadlineHeight: Long, charityPercent: Int,
              charityAddr: String, ticketPrice: Long, state: Int, walletAddress: String, paymentAddress: String,
-             createTxId: Option[String],  mergeTxId: Option[String], timeOut: Long, ttl: Long): Future[Unit] ={
+             createTxId: Option[String],  mergeTxId: Option[String], timeStamp: String, ttl: Long): Future[Unit] ={
     val action = requests += CreateReq(1, name, description, goal, deadlineHeight, charityPercent, charityAddr,
-      ticketPrice, state, walletAddress, paymentAddress, createTxId, mergeTxId, timeOut, ttl, false)
+      ticketPrice, state, walletAddress, paymentAddress, createTxId, mergeTxId, timeStamp, ttl, false)
     db.run(action.asTry).map( _ => ())
   }
 
@@ -105,10 +105,5 @@ class CreateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
     Await.result(db.run(updateAction), Duration.Inf)
   }
 
-  def updateTimeOut(id: Long, time: Long): Int = {
-    val q = for { c <- requests if c.id === id } yield c.timeOut
-    val updateAction = q.update(time)
-    Await.result(db.run(updateAction), Duration.Inf)
-  }
 }
 

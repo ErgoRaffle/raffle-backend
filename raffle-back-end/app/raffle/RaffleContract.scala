@@ -213,7 +213,6 @@ class RaffleContract @Inject()() {
        |        sigmaProp(
        |          allOf(
        |            Coll(
-       |              // TODO must check data input to be oracle box
        |              // check winner box remain on output box
        |              blake2b256(OUTPUTS(0).propositionBytes) == winnerScriptHash,
        |              OUTPUTS(0).R4[Coll[Long]].get(0) == charityCoef,
@@ -237,7 +236,10 @@ class RaffleContract @Inject()() {
        |              // check service fee
        |              OUTPUTS(2).propositionBytes == serviceAddress,
        |              OUTPUTS(2).value == serviceFeeAmount,
-       |              CONTEXT.dataInputs(0).tokens(0)._1 == randomBoxToken
+       |              // check datainput to be oracle box
+       |              CONTEXT.dataInputs(0).tokens(0)._1 == randomBoxToken,
+       |              // and datainput must created after deadline
+       |              CONTEXT.dataInputs(0).creationInfo._1 > deadlineHeight,
        |            )
        |          )
        |        )

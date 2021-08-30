@@ -27,60 +27,67 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
       val txB = ctx.newTxBuilder()
       val prover = ctx.newProverBuilder()
         .build()
-      val boxId = explorer.getUnspentTokenBoxes(Configs.token.oracle, 0, 100)
+      val boxJson = explorer.getUnspentTokenBoxes(Configs.token.oracle, 0, 100)
         .hcursor.downField("items").as[List[Json]].getOrElse(throw parseException())
-        .head.hcursor.downField("boxId").as[String].getOrElse("")
-      val box = ctx.getBoxesById(boxId).head
+        .head
+      val creationHeight = boxJson.hcursor.downField("creationHeight").as[Long].getOrElse(throw parseException())
       val r4 = raffleBox.getRegisters.get(0).getValue.asInstanceOf[CollOverArray[Long]].toArray
-      val charity = r4(0)
-      val service = r4(1)
-      val ticketPrice = r4(2)
-      val totalSoldTicket = r4(5)
-      val winBytes = box.getId.getBytes.slice(0, 15)
-      val winNumber = (((BigInt(winBytes) % totalSoldTicket) + totalSoldTicket) % totalSoldTicket).toLong
-      logger.info(s"winner number is ${winNumber} in raffle ${raffleBox.getTokens.get(1).getId}")
-      val totalEarning = ticketPrice * totalSoldTicket
-      val charityAmount = charity * totalEarning / 100
-      val serviceAmount = service * totalEarning / 100
-      val charityAddress = utils.getAddress(raffleBox.getRegisters.get(1).getValue.asInstanceOf[Coll[Byte]].toArray)
-      val serviceAddress = utils.getAddress(raffleBox.getRegisters.get(3).getValue.asInstanceOf[Coll[Byte]].toArray)
-      val winnerAmount = raffleBox.getValue - charityAmount - serviceAmount - Configs.fee
-      val newRaffleBox = txB.outBoxBuilder()
-        .value(winnerAmount)
-        .contract(addresses.getRaffleWinnerContract())
-        .tokens(raffleBox.getTokens.get(0), raffleBox.getTokens.get(1))
-        .registers(
-          utils.longListToErgoValue(r4),
-          raffleBox.getRegisters.get(1),
-          raffleBox.getRegisters.get(2),
-          raffleBox.getRegisters.get(3),
-          ErgoValue.of(winNumber)
-        )
-        .build()
-      val charityBox = txB.outBoxBuilder()
-        .value(charityAmount)
-        .contract(new ErgoTreeContract(charityAddress.script))
-        .build()
-      val serviceBox = txB.outBoxBuilder()
-        .value(serviceAmount)
-        .contract(new ErgoTreeContract(serviceAddress.script))
-        .build()
-      val tx = txB.boxesToSpend(Seq(raffleBox).asJava)
-        .fee(Configs.fee)
-        .outputs(newRaffleBox, charityBox, serviceBox)
-        .sendChangeTo(Configs.serviceAddress.getErgoAddress)
-        .withDataInputs(Seq(box).asJava)
-        .build()
+      logger.info(s"Oracle box height is ${creationHeight} and raffle deadline is ${r4(4)}")
+      if (creationHeight > r4(4)) {
+        val boxId = boxJson.hcursor.downField("boxId").as[String].getOrElse("")
+        val box = ctx.getBoxesById(boxId).head
+        val charity = r4(0)
+        val service = r4(1)
+        val ticketPrice = r4(2)
+        val totalSoldTicket = r4(5)
+        val winBytes = box.getId.getBytes.slice(0, 15)
+        val winNumber = (((BigInt(winBytes) % totalSoldTicket) + totalSoldTicket) % totalSoldTicket).toLong
+        logger.info(s"winner number is ${winNumber} in raffle ${raffleBox.getTokens.get(1).getId}")
+        val totalEarning = ticketPrice * totalSoldTicket
+        val charityAmount = charity * totalEarning / 100
+        val serviceAmount = service * totalEarning / 100
+        val charityAddress = utils.getAddress(raffleBox.getRegisters.get(1).getValue.asInstanceOf[Coll[Byte]].toArray)
+        val serviceAddress = utils.getAddress(raffleBox.getRegisters.get(3).getValue.asInstanceOf[Coll[Byte]].toArray)
+        val winnerAmount = raffleBox.getValue - charityAmount - serviceAmount - Configs.fee
+        val newRaffleBox = txB.outBoxBuilder()
+          .value(winnerAmount)
+          .contract(addresses.getRaffleWinnerContract())
+          .tokens(raffleBox.getTokens.get(0), raffleBox.getTokens.get(1))
+          .registers(
+            utils.longListToErgoValue(r4),
+            raffleBox.getRegisters.get(1),
+            raffleBox.getRegisters.get(2),
+            raffleBox.getRegisters.get(3),
+            ErgoValue.of(winNumber)
+          )
+          .build()
+        val charityBox = txB.outBoxBuilder()
+          .value(charityAmount)
+          .contract(new ErgoTreeContract(charityAddress.script))
+          .build()
+        val serviceBox = txB.outBoxBuilder()
+          .value(serviceAmount)
+          .contract(new ErgoTreeContract(serviceAddress.script))
+          .build()
+        val tx = txB.boxesToSpend(Seq(raffleBox).asJava)
+          .fee(Configs.fee)
+          .outputs(newRaffleBox, charityBox, serviceBox)
+          .sendChangeTo(Configs.serviceAddress.getErgoAddress)
+          .withDataInputs(Seq(box).asJava)
+          .build()
 
-      try {
-        val signedTx = prover.sign(tx)
-        signedTx
-      } catch {
-        case e: Throwable => {
-          logger.error(s"raffle ${raffleBox.getTokens.get(1).getId} final tx proving failed")
-          logger.error(utils.getStackTraceStr(e))
-          throw proveException()
+        try {
+          val signedTx = prover.sign(tx)
+          signedTx
+        } catch {
+          case e: Throwable => {
+            logger.error(s"raffle ${raffleBox.getTokens.get(1).getId} final tx proving failed")
+            logger.error(utils.getStackTraceStr(e))
+            throw proveException()
+          }
         }
+      } else {
+        null
       }
     }
     catch {
@@ -317,7 +324,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
         }).foreach(ticket => {
           try {
             val donationBox = ctx.getBoxesById(ticket.hcursor.downField("boxId").as[String].getOrElse(throw parseException())).head
-            if(!utils.isBoxInMemPool(donationBox)) {
+            if (!utils.isBoxInMemPool(donationBox)) {
               val refundTx = refundRaffle(ctx, newRaffle, donationBox)
               var txId = ctx.sendTransaction(refundTx)
               if (txId == null) throw failedTxException(s"ticket with boxId ${donationBox.getId} in raffle ${raffle.getTokens.get(1).getId.toString} refund tx sending failed")
@@ -368,15 +375,19 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
   def processCompletedRaffle(ctx: BlockchainContext, raffle: InputBox): Unit = {
     try {
       val tx = completeRaffle(ctx, raffle)
-      var txId = ctx.sendTransaction(tx)
-      if (txId == null) throw failedTxException(s"raffle ${raffle.getTokens.get(1).getId.toString} final tx sending failed")
-      else txId = txId.replaceAll("\"", "")
-      logger.info(s"complete successful raffle Tx: ${txId}")
-      val tx2 = withdrawReward(ctx, utils.getServiceBox(), tx.getOutputsToSpend.get(0))
-      var txId2 = ctx.sendTransaction(tx2)
-      if (txId2 == null) throw failedTxException(s"raffle ${raffle.getTokens.get(1).getId.toString} winner withdraw tx sending failed")
-      else txId2 = txId2.replaceAll("\"", "")
-      logger.info(s"winner withdraw Tx: ${txId2}")
+      if(tx != null) {
+        var txId = ctx.sendTransaction(tx)
+        if (txId == null) throw failedTxException(s"raffle ${raffle.getTokens.get(1).getId.toString} final tx sending failed")
+        else txId = txId.replaceAll("\"", "")
+        logger.info(s"complete successful raffle Tx: ${txId}")
+        val tx2 = withdrawReward(ctx, utils.getServiceBox(), tx.getOutputsToSpend.get(0))
+        var txId2 = ctx.sendTransaction(tx2)
+        if (txId2 == null) throw failedTxException(s"raffle ${raffle.getTokens.get(1).getId.toString} winner withdraw tx sending failed")
+        else txId2 = txId2.replaceAll("\"", "")
+        logger.info(s"winner withdraw Tx: ${txId2}")
+      }else{
+        logger.info(s"waiting for new oracle box to complete raffle ${raffle.getTokens.get(1).getId.toString}")
+      }
     } catch {
       case _: connectionException =>
       case e: failedTxException => {
@@ -463,7 +474,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
             logger.info(s"winner funding tx sent with txId ${txId}")
             serviceBox = tx.getOutputsToSpend.get(0)
           }
-      })
+        })
     } catch {
       case _: connectionException =>
       case e: Throwable => logger.error(e.getMessage)

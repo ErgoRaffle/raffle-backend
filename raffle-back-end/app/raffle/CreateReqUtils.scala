@@ -1,5 +1,7 @@
 package raffle
 
+import java.time.LocalDateTime
+
 import dao.CreateReqDAO
 import helpers.{Configs, Utils, connectionException, failedTxException, paymentNotCoveredException, proveException}
 import io.circe.{Json, parser}
@@ -14,7 +16,7 @@ import special.collection.{Coll, CollOverArray}
 import scala.collection.JavaConverters._
 import scala.collection.mutable.Seq
 
-class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, raffleContract: RaffleContract, addresses: Addresses,
+class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, addresses: Addresses,
                                createReqDAO: CreateReqDAO) {
   private val logger: Logger = Logger(this.getClass)
 
@@ -24,7 +26,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
       client.getClient.execute(ctx => {
         val paymentAddress = addresses.getRaffleCreateProxyContract(pk, charityPercent, name, description, deadlineHeight, charityAddr, goal, ticketPrice)
         createReqDAO.insert(name, description, goal, deadlineHeight, charityPercent, charityAddr, ticketPrice, 0, pk, paymentAddress,
-          null, null, Configs.inf + utils.currentTime, Configs.creationDelay + utils.currentTime)
+          null, null, LocalDateTime.now().toString, Configs.creationDelay + utils.currentTime)
         paymentAddress
       })
     }
@@ -36,12 +38,11 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
     }
   }
 
-  def createRaffle(req: CreateReq): SignedTransaction = {
+  def createRaffle(req: CreateReq, serviceBox: InputBox): SignedTransaction = {
     client.getClient.execute(ctx => {
       val txB = ctx.newTxBuilder()
       val prover = ctx.newProverBuilder()
         .build()
-      val serviceBox = utils.getServiceBox()
       val paymentBoxList = client.getCoveringBoxesFor(Address.create(req.paymentAddress), Configs.fee*4)
       if(!paymentBoxList.isCovered) throw paymentNotCoveredException(s"Creation payment for request ${req.id} not covered the fee, request state id ${req.state} and request tx is ${req.createTxId}")
 
@@ -76,7 +77,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         .value(Configs.fee)
         .contract(addresses.getRaffleTokenIssueContract())
         .tokens(new ErgoToken(serviceBox.getId.getBytes, 1000000000L))
-        .registers(tokenName, tokenName)
+        .registers(tokenName, tokenName, ErgoValue.of("0".getBytes("utf-8")))
         .build()
 
       var change = paymentBoxList.getCoveredAmount - Configs.fee*4
@@ -92,7 +93,6 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
 
       try {
         val signedTx = prover.sign(raffleCreateTx)
-        logger.info(s"create tx for request ${req.id} proved successfully")
         signedTx
       } catch {
         case e: Throwable => {
@@ -129,7 +129,6 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         .build()
       try {
         val signedTx = prover.sign(tx)
-        logger.info(s"merge tx for raffle ${tokenBox.getTokens.get(0).getId} proved successfully")
         signedTx
       } catch {
         case e: Throwable => {
@@ -147,64 +146,59 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
     if(coveringList.isCovered) {
       createReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
     }
+    else {
+      val numberTxInMempool = explorer.getNumberTxInMempoolByAddress(req.paymentAddress)
+      if (numberTxInMempool > 0){
+        createReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
+      }
+    }
     if (req.state == 0) {
       if(coveringList.isCovered) return true
     }
     else if (req.state == 1) {
-      return utils.checkTransaction(req.createTxId.getOrElse("")) == 0
+      val txState = utils.checkTransaction(req.createTxId.getOrElse(""))
+      if (txState == 1)
+        createReqDAO.updateStateById(req.id, 2)
+      else if (txState == 0) return true
     }
     false
   }
 
-  def generateAndSendBothTx(ctx: BlockchainContext, req: CreateReq): Unit = {
+  def generateAndSendBothTx(req: CreateReq, serviceBox: InputBox): InputBox = {
     try {
-      val createTx = createRaffle(req)
-      var createTxId = ctx.sendTransaction(createTx)
-      if (createTxId == null) throw failedTxException(s"Creation transaction sending failed for ${req.id}")
-      else createTxId = createTxId.replaceAll("\"", "")
-      logger.info(s"Creation transaction ${createTxId} sent for ${req.id}")
-      createReqDAO.updateCreateTxID(req.id, createTxId)
-      createReqDAO.updateStateById(req.id, 1)
-      val mergeTx = mergeRaffle(createTx.getOutputsToSpend.get(1), createTx.getOutputsToSpend.get(2))
-      var mergeTxId = ctx.sendTransaction(mergeTx)
-      if (mergeTxId == null) throw failedTxException(s"Merge transaction sending failed for ${req.id}")
-      else mergeTxId = mergeTxId.replaceAll("\"", "")
-      logger.info(s"Merge transaction ${mergeTxId} sent for ${req.id}")
-      createReqDAO.updateMergeTxId(req.id, mergeTxId)
+      client.getClient.execute(ctx => {
+        val createTx = createRaffle(req, serviceBox)
+        var createTxId = ctx.sendTransaction(createTx)
+        if (createTxId == null) throw failedTxException(s"Creation transaction sending failed for ${req.id}")
+        else createTxId = createTxId.replaceAll("\"", "")
+        logger.info(s"Creation transaction ${createTxId} sent for ${req.id}")
+        createReqDAO.updateCreateTxID(req.id, createTxId)
+        createReqDAO.updateStateById(req.id, 1)
+
+        val mergeTx = mergeRaffle(createTx.getOutputsToSpend.get(1), createTx.getOutputsToSpend.get(2))
+        var mergeTxId = ctx.sendTransaction(mergeTx)
+        if (mergeTxId == null) throw failedTxException(s"Merge transaction sending failed for ${req.id}")
+        else mergeTxId = mergeTxId.replaceAll("\"", "")
+        logger.info(s"Merge transaction ${mergeTxId} sent for ${req.id}")
+        createReqDAO.updateMergeTxId(req.id, mergeTxId)
+        createTx.getOutputsToSpend.get(0)
+      })
     } catch {
       case e: connectionException => throw e
       case e: proveException => throw e
-      case e:failedTxException => {
+      case e: failedTxException => {
         logger.warn(e.getMessage)
         throw e
       }
-      case e:paymentNotCoveredException => {
+      case e: paymentNotCoveredException => {
         logger.warn(e.getMessage)
         throw e
       }
-      case e:Throwable => {
+      case e: Throwable => {
         logger.error(utils.getStackTraceStr(e))
         throw new Throwable("Error in new raffle creation")
       }
     }
-  }
-
-  def nextStage(req: CreateReq): Int = {
-    client.getClient.execute(ctx => {
-      if (req.state == 0) {
-        generateAndSendBothTx(ctx, req)
-        return 0
-      } else if (req.state == 1) {
-        val tx1Status = utils.checkTransaction(req.createTxId.getOrElse(""))
-        if (tx1Status == 0) {
-          generateAndSendBothTx(ctx, req)
-        } else if (tx1Status == 1) {
-            createReqDAO.updateStateById(req.id, 2)
-        }
-        return 0
-      }
-      else return 1
-    })
   }
 
   def independentMergeTxGeneration(): Unit ={
@@ -220,10 +214,12 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
             .hcursor.downField("items").as[Seq[Json]].getOrElse(throw new Throwable("parse error")).head
             .hcursor.downField("boxId").as[String].getOrElse(null)
           val tokenBox = ctx.getBoxesById(tokenBoxId).head
-          val mergeTx = mergeRaffle(box, tokenBox)
-          if (utils.checkTransaction(mergeTx.getId) != 2) {
-            val txId = ctx.sendTransaction(mergeTx)
-            logger.info(s"Merge Tx for raffle ${tokenId} sent with txId: " + txId)
+          if(!utils.isBoxInMemPool(tokenBox)){
+            val mergeTx = mergeRaffle(box, tokenBox)
+            var mergeTxId = ctx.sendTransaction(mergeTx)
+            if (mergeTxId == null) throw failedTxException(s"Merge transaction sending failed for raffle ${tokenId}")
+            else mergeTxId = mergeTxId.replaceAll("\"", "")
+            logger.info(s"Merge Tx for raffle ${tokenId} sent with txId: " + mergeTxId)
           }
         } catch {
           case e: Throwable => logger.warn(e.getMessage + s" in raffle mergeTx")
