@@ -72,7 +72,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
         val tx = txB.boxesToSpend(Seq(raffleBox).asJava)
           .fee(Configs.fee)
           .outputs(newRaffleBox, charityBox, serviceBox)
-          .sendChangeTo(Configs.serviceAddress.getErgoAddress)
+          .sendChangeTo(Configs.serviceFeeAddress.getErgoAddress)
           .withDataInputs(Seq(box).asJava)
           .build()
 
@@ -166,7 +166,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
         .tokensToBurn(
           new ErgoToken(raffleBox.getTokens.get(1).getId, raffleBox.getTokens.get(1).getValue + winnerTicketBox.getTokens.get(0).getValue)
         )
-        .sendChangeTo(Configs.serviceAddress.getErgoAddress)
+        .sendChangeTo(Configs.serviceFeeAddress.getErgoAddress)
         .outputs(serviceOutput, winnerOutput)
         .build()
       try {
@@ -208,7 +208,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
       val tx = txB.boxesToSpend(Seq(raffleBox).asJava)
         .fee(Configs.fee)
         .outputs(raffleOutput)
-        .sendChangeTo(Configs.serviceAddress.getErgoAddress)
+        .sendChangeTo(Configs.serviceFeeAddress.getErgoAddress)
         .build()
       try {
         val signedTx = prover.sign(tx)
@@ -259,7 +259,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
     val tx = txB.boxesToSpend(Seq(raffleBox, donation).asJava)
       .fee(Configs.fee)
       .outputs(raffleOutput, donationRefund)
-      .sendChangeTo(Configs.serviceAddress.getErgoAddress)
+      .sendChangeTo(Configs.serviceFeeAddress.getErgoAddress)
       .build()
     try {
       val signedTx = prover.sign(tx)
@@ -292,7 +292,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
       .fee(Configs.fee)
       .outputs(serviceOut)
       .tokensToBurn(new ErgoToken(raffleBox.getTokens.get(1).getId, raffleBox.getTokens.get(1).getValue))
-      .sendChangeTo(Configs.serviceAddress.getErgoAddress)
+      .sendChangeTo(Configs.serviceFeeAddress.getErgoAddress)
       .build()
     try {
       val signedTx = prover.sign(tx)
@@ -440,7 +440,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
     try {
       client.getAllUnspentBox(Address.create(Configs.addressEncoder.fromProposition(addresses.getRaffleActiveContract().getErgoTree).get.toString))
         .filter(box => {
-          box.getRegisters.get(0).getValue.asInstanceOf[Coll[Long]].toArray(4) < ctx.getHeight
+          box.getRegisters.get(0).getValue.asInstanceOf[Coll[Long]].toArray(4) < client.getHeight
         }).foreach(raffle => {
         if (!utils.isBoxInMemPool(raffle)) processSingleRaffle(ctx, raffle)
       })

@@ -23,12 +23,10 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
   def CreateRaffleProxyAddress(pk: String, charityPercent: Int, name: String, description: String, deadlineHeight: Long,
                                charityAddr: String, goal: Long, ticketPrice: Long): String = {
     try {
-      client.getClient.execute(ctx => {
-        val paymentAddress = addresses.getRaffleCreateProxyContract(pk, charityPercent, name, description, deadlineHeight, charityAddr, goal, ticketPrice)
-        createReqDAO.insert(name, description, goal, deadlineHeight, charityPercent, charityAddr, ticketPrice, 0, pk, paymentAddress,
-          null, null, LocalDateTime.now().toString, Configs.creationDelay + utils.currentTime)
-        paymentAddress
-      })
+      val paymentAddress = addresses.getRaffleCreateProxyContract(pk, charityPercent, name, description, deadlineHeight, charityAddr, goal, ticketPrice)
+      createReqDAO.insert(name, description, goal, deadlineHeight, charityPercent, charityAddr, ticketPrice, 0, pk, paymentAddress,
+        null, null, LocalDateTime.now().toString, Configs.creationDelay + utils.currentTime)
+      paymentAddress
     }
     catch {
       case e: Throwable => {
@@ -125,7 +123,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
       val tx = txB.boxesToSpend(Seq(raffleBox, tokenBox).asJava)
         .fee(Configs.fee)
         .outputs(raffleOutputBox)
-        .sendChangeTo(Configs.serviceAddress.getErgoAddress)
+        .sendChangeTo(Configs.serviceFeeAddress.getErgoAddress)
         .build()
       try {
         val signedTx = prover.sign(tx)
@@ -204,7 +202,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
   def independentMergeTxGeneration(): Unit ={
     client.getClient.execute(ctx => {
       val raffleWaitingTokenAdd = Address.fromErgoTree(addresses.getRaffleWaitingTokenContract().getErgoTree, Configs.networkType)
-      val raffleWaitingTokenBoxes = client.getCoveringBoxesFor(raffleWaitingTokenAdd, Configs.infBoxVal).getBoxes.asScala
+      val raffleWaitingTokenBoxes = client.getAllUnspentBox(raffleWaitingTokenAdd)
         .filter(_.getTokens.size() > 0)
         .filter(_.getTokens.get(0).getId.toString == Configs.token.service)
       raffleWaitingTokenBoxes.foreach(box => {
