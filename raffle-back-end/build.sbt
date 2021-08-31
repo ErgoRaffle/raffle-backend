@@ -1,7 +1,7 @@
-name := """ErgoRaffle"""
-organization := "com.example"
+name := "ErgoRaffle"
+organization := "ErgoRaffle"
 
-version := "1.0-SNAPSHOT"
+version := "1.0.0-beta"
 
 lazy val root = (project in file(".")).enablePlugins(PlayScala)
 
@@ -55,8 +55,3 @@ assemblyMergeStrategy in assembly := {
 
 assemblyJarName in assembly := s"${name.value}-${version.value}.jar"
 
-// Adds additional packages into Twirl
-// TwirlKeys.templateImports += "com.example.controllers._"
-
-// Adds additional packages into conf/routes
-// play.sbt.routes.RoutesKeys.routesImport += "com.example.binders._"
