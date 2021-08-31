@@ -1,9 +1,10 @@
 package network
 
-import helpers.Configs
+import helpers.{Configs, explorerException}
 import io.circe.Json
 import io.circe.parser.parse
 import javax.inject.Singleton
+import play.api.libs.json.{Json => playJson}
 import scalaj.http.{BaseHttp, HttpConstants}
 
 import scala.util.{Failure, Success, Try}
@@ -12,10 +13,28 @@ import scala.util.{Failure, Success, Try}
 class Explorer() {
   private val baseUrlV0 = s"${Configs.explorerUrl}/api/v0"
   private val baseUrlV1 = s"${Configs.explorerUrl}/api/v1"
-  private val tx = s"$baseUrlV0/transactions"
+  private val tx = s"$baseUrlV1/transactions"
   private val unconfirmedTx = s"$baseUrlV0/transactions/unconfirmed"
   private val unspentBoxesByTokenId = s"$baseUrlV1/boxes/unspent/byTokenId"
   private val boxesP1 = s"$tx/boxes"
+  private val mempoolTransactions = s"$baseUrlV1/mempool/transactions/byAddress"
+
+  def getTxsInMempoolByAddress(address: String): Json = try {
+    GetRequest.httpGet(s"$mempoolTransactions/$address")
+  }
+  catch {
+    case _: Throwable => Json.Null
+  }
+
+  def getNumberTxInMempoolByAddress(address: String): Int = try {
+    val newJson = getTxsInMempoolByAddress(address)
+    val js = playJson.parse(newJson.toString())
+    (js \ "total").as[Int]
+  }
+  catch {
+    case _: Throwable => 0
+  }
+
   /**
    * @param txId transaction id
    * @return transaction if it is unconfirmed
@@ -64,22 +83,27 @@ class Explorer() {
   } catch {
     case _: Throwable => Json.Null
   }
+
+  def getUnconfirmedTxByAddress(address: String): Json = try {
+    GetRequest.httpGet(s"$unconfirmedTx/byAddress/$address/?offset=0&limit=100")
+  } catch {
+    case _: Throwable => Json.Null
+  }
 }
 
 object GetRequest{
-  object GravityHttp extends BaseHttp (None, HttpConstants.defaultOptions, HttpConstants.utf8, 4096, "Mozilla/5.0 (X11; OpenBSD amd64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.81 Safari/537.36",
+  object RaffleHttp extends BaseHttp (None, HttpConstants.defaultOptions, HttpConstants.utf8, 4096, "Mozilla/5.0 (X11; OpenBSD amd64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.81 Safari/537.36",
     true
   )
   private val defaultHeader: Seq[(String, String)] = Seq[(String, String)](("Accept", "application/json"))
   def httpGetWithError(url: String, headers: Seq[(String, String)] = defaultHeader): Either[Throwable, Json] = {
     Try {
-      val responseReq = GravityHttp(url).headers(defaultHeader).asString
-      println(responseReq.body)
+      val responseReq = RaffleHttp(url).headers(defaultHeader).asString
       (responseReq.code, responseReq)
     }
     match{
       case Success((200, responseReq)) => parse(responseReq.body)
-      case Success((responseHttpCode, responseReq)) => Left(new Exception(s"returned a error with http code $responseHttpCode and error ${responseReq.throwError}"))
+      case Success((responseHttpCode, responseReq)) => Left(explorerException(s"returned a error with http code $responseHttpCode and error ${responseReq.throwError}"))
       case Failure(exception) => Left(exception)
     }
   }
