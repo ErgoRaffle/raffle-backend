@@ -1,0 +1,3 @@
+[submodule "raffle-frontend"]
+	path = raffle-frontend
+	url = ../raffle-frontend.git
