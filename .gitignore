@@ -1,6 +1,5 @@
 logs
 target
-**/public/
 /.bsp
 /.idea
 /.idea_modules
@@ -33,5 +32,6 @@ target
 .vscode
 
 project/
-raffle-backend/.idea/
-raffle-backend/data/
+**/.idea/
+**/data/
+**/public
