@@ -78,6 +78,8 @@ class RaffleContract @Inject()() {
        |              OUTPUTS(1).R7[Coll[Byte]].get == SELF.R5[Coll[Byte]].get,
        |              // must store ticket id to get all tokens from token repo box
        |              OUTPUTS(1).R8[Coll[Byte]].get == SELF.id,
+       |              // Check Output token
+       |              OUTPUTS(1).tokens(0)._1 == raffleServiceToken,
        |              // third output must be token repo
        |              blake2b256(OUTPUTS(2).propositionBytes) == raffleTokenIssueHash,
        |              OUTPUTS(2).tokens(0)._1 == SELF.id,
