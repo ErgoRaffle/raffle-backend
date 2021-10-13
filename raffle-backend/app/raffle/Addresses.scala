@@ -1,168 +1,144 @@
 package raffle
 
-import dao.CreateReqDAO
 import helpers.{Configs, Utils}
 import network.{Client, Explorer}
-import org.ergoplatform.appkit.impl.ErgoTreeContract
 import org.ergoplatform.appkit.{Address, BlockchainContext, ConstantsBuilder, ErgoContract, ErgoId}
 import scorex.crypto.hash.Digest32
 
 import javax.inject.Inject
 
 
-private object ContractTypeEnum extends Enumeration {
-  type ContractType = Value
-  val CONTRACT_TOKEN_ISSUE, CONTRACT_SERVICE, CONTRACT_TICKET, CONTRACT_RAFFLE_WAITING_TOKEN,
-    CONTRACT_RAFFLE_ACTIVE, CONTRACT_WINNER, CONTRACT_RAFFLE_REDEEM= Value
-}
-import ContractTypeEnum._
+class Addresses @Inject()(client: Client, contract: RaffleContract){
+  private lazy val tokenRepo: ErgoContract = generateTokenRepo()
+  private lazy val service: ErgoContract = generateService()
+  private lazy val ticket: ErgoContract = generateTicket()
+  private lazy val raffleInactive: ErgoContract = generateRaffleWaitingToken()
+  private lazy val raffleActive: ErgoContract = generateRaffleActive()
+  private lazy val raffleWinner: ErgoContract = generateRaffleWinner()
+  private lazy val raffleRedeem: ErgoContract = generateRaffleRedeem()
 
-class Addresses @Inject()(client: Client, explorer: Explorer, utils: Utils, contract: RaffleContract){
-  private var tokenRepo: ErgoContract = _
-  private var service: ErgoContract = _
-  private var ticket: ErgoContract = _
-  private var raffleWaitingToken: ErgoContract = _
-  private var raffleActive: ErgoContract = _
-  private var raffleWinner: ErgoContract = _
-  private var raffleRedeem: ErgoContract = _
+  lazy val tokenRepoAddress: Address = generateAddress(tokenRepo)
+  lazy val serviceAddress: Address = generateAddress(service)
+  lazy val ticketAddress: Address = generateAddress(ticket)
+  lazy val raffleInactiveAddress: Address = generateAddress(raffleInactive)
+  lazy val raffleActiveAddress: Address = generateAddress(raffleActive)
+  lazy val raffleWinnerAddress: Address = generateAddress(raffleWinner)
+  lazy val raffleRedeemAddress: Address = generateAddress(raffleRedeem)
 
+  private def generateAddress(contract: ErgoContract): Address ={
+    Address.create(Configs.addressEncoder.fromProposition(contract.getErgoTree).get.toString)
+  }
   private def getContractScriptHash(contract: ErgoContract): Digest32 = {
     scorex.crypto.hash.Blake2b256(contract.getErgoTree.bytes)
   }
 
-  private def generateRaffleRedeem(ctx: BlockchainContext): Unit ={
-    this.raffleRedeem = ctx.compileContract(ConstantsBuilder.create()
-      .item("raffleServiceNFT", ErgoId.create(Configs.token.nft).getBytes)
-      .item("raffleServiceToken", ErgoId.create(Configs.token.service).getBytes)
-      .build(), contract.raffleRedeemScript)
-  }
-
-  private def generateRaffleWinner(ctx:BlockchainContext): Unit ={
-    this.raffleWinner = ctx.compileContract(ConstantsBuilder.create()
-      .item("raffleServiceNFT", ErgoId.create(Configs.token.nft).getBytes)
-      .item("raffleServiceToken", ErgoId.create(Configs.token.service).getBytes)
-      .item("fee", Configs.fee)
-      .build(), contract.raffleWinnerScript)
-  }
-
-  private def generateRaffleActive(ctx:BlockchainContext): Unit ={
-    val raffleRedeemScriptHash = getContractScriptHash(this.getContract(CONTRACT_RAFFLE_REDEEM))
-    val raffleWinnerScriptHash = getContractScriptHash(this.getContract(CONTRACT_WINNER))
-    val ticketScriptHash = getContractScriptHash(this.getContract(CONTRACT_TICKET))
-    this.raffleActive = ctx.compileContract(ConstantsBuilder.create()
-      .item("winnerScriptHash", raffleWinnerScriptHash)
-      .item("ticketScriptHash", ticketScriptHash)
-      .item("redeemScriptHash", raffleRedeemScriptHash)
-      .item("raffleServiceNFT", ErgoId.create(Configs.token.nft).getBytes)
-      .item("randomBoxToken", ErgoId.create(Configs.token.oracle).getBytes)
-      .item("raffleServiceToken", ErgoId.create(Configs.token.service).getBytes)
-      .item("fee", Configs.fee)
-      .build(), contract.raffleActiveScript)
-  }
-
-  private def generateRaffleWaitingToken(ctx: BlockchainContext): Unit ={
-    val raffleActiveScriptHash = getContractScriptHash(this.getContract(CONTRACT_RAFFLE_ACTIVE))
-    this.raffleWaitingToken = ctx.compileContract(ConstantsBuilder.create()
-      .item("raffleActiveServiceToken", ErgoId.create(Configs.token.service).getBytes)
-      .item("raffleActiveHash", raffleActiveScriptHash)
-      .item("fee", Configs.fee)
-      .build(), contract.RaffleScriptWaitingToken);
-  }
-
-  private def generateTokenRepo(ctx: BlockchainContext): Unit ={
-    this.tokenRepo = ctx.compileContract(ConstantsBuilder.create()
-      .item("raffleServiceToken", ErgoId.create(Configs.token.service).getBytes)
-      .build(), contract.raffleTokenIssueRepo);
-  }
-
-  private def generateTicket(ctx: BlockchainContext): Unit ={
-    this.ticket = ctx.compileContract(ConstantsBuilder.create()
-      .item("raffleServiceToken", ErgoId.create(Configs.token.service).getBytes)
-      .item("raffleNFT", ErgoId.create(Configs.token.nft).getBytes)
-      .item("fee", Configs.fee)
-      .build(), contract.ticketScript);
-  }
-
-  private def generateService(ctx: BlockchainContext): Unit = {
-    val raffleScriptHash = getContractScriptHash(this.getContract(CONTRACT_RAFFLE_WAITING_TOKEN))
-    val tokenIssueScriptHash: Digest32 = getContractScriptHash(this.getContract(CONTRACT_TOKEN_ISSUE))
-    this.service = ctx.compileContract(ConstantsBuilder.create()
-      .item("raffleScriptHash", raffleScriptHash)
-      .item("raffleTokenIssueHash", tokenIssueScriptHash)
-      .item("raffleServiceNFT", ErgoId.create(Configs.token.nft).getBytes)
-      .item("raffleServiceToken", ErgoId.create(Configs.token.service).getBytes)
-      .item("ownerPK", Configs.serviceOwner.getPublicKey)
-      .item("minFee", Configs.fee)
-      .build(), contract.RaffleServiceScript)
-  }
-
-  private def getContract(contractType: ContractType): ErgoContract ={
+  private def generateRaffleRedeem(): ErgoContract ={
     client.getClient.execute((ctx: BlockchainContext) => {
-      if(contractType == CONTRACT_TICKET ) {
-        if (this.ticket == null) {
-          this.generateTicket(ctx)
-        }
-        this.ticket
-      }else if(contractType == CONTRACT_SERVICE) {
-        if(this.service == null) {
-          this.generateService(ctx)
-        }
-        this.service
-      }else if(contractType == CONTRACT_RAFFLE_ACTIVE) {
-        if(this.raffleActive == null) {
-          this.generateRaffleActive(ctx)
-        }
-        this.raffleActive
-      }else if(contractType == CONTRACT_RAFFLE_REDEEM) {
-        if(this.raffleRedeem == null) {
-          this.generateRaffleRedeem(ctx)
-        }
-        this.raffleRedeem
-      }else if(contractType == CONTRACT_WINNER) {
-        if(this.raffleWinner == null) {
-          this.generateRaffleWinner(ctx)
-        }
-        this.raffleWinner
-      }else if(contractType == CONTRACT_RAFFLE_WAITING_TOKEN) {
-        if(this.raffleWaitingToken == null) {
-          this.generateRaffleWaitingToken(ctx)
-        }
-        this.raffleWaitingToken
-      }else{
-        if(this.tokenRepo == null){
-          this.generateTokenRepo(ctx)
-        }
-        this.tokenRepo
-      }
+      ctx.compileContract(ConstantsBuilder.create()
+        .item("raffleServiceNFT", ErgoId.create(Configs.token.nft).getBytes)
+        .item("raffleServiceToken", ErgoId.create(Configs.token.service).getBytes)
+        .build(), contract.raffleRedeemScript)
     })
   }
 
+  private def generateRaffleWinner(): ErgoContract ={
+    client.getClient.execute((ctx: BlockchainContext) => {
+      ctx.compileContract(ConstantsBuilder.create()
+        .item("raffleServiceNFT", ErgoId.create(Configs.token.nft).getBytes)
+        .item("raffleServiceToken", ErgoId.create(Configs.token.service).getBytes)
+        .item("fee", Configs.fee)
+        .build(), contract.raffleWinnerScript)
+    })
+  }
+
+  private def generateRaffleActive(): ErgoContract ={
+    client.getClient.execute((ctx: BlockchainContext) => {
+      val raffleRedeemScriptHash = getContractScriptHash(raffleRedeem)
+      val raffleWinnerScriptHash = getContractScriptHash(raffleWinner)
+      val ticketScriptHash = getContractScriptHash(ticket)
+      ctx.compileContract(ConstantsBuilder.create()
+        .item("winnerScriptHash", raffleWinnerScriptHash)
+        .item("ticketScriptHash", ticketScriptHash)
+        .item("redeemScriptHash", raffleRedeemScriptHash)
+        .item("raffleServiceNFT", ErgoId.create(Configs.token.nft).getBytes)
+        .item("randomBoxToken", ErgoId.create(Configs.token.oracle).getBytes)
+        .item("raffleServiceToken", ErgoId.create(Configs.token.service).getBytes)
+        .item("fee", Configs.fee)
+        .build(), contract.raffleActiveScript)
+    })
+  }
+
+  private def generateRaffleWaitingToken(): ErgoContract ={
+    client.getClient.execute((ctx: BlockchainContext) => {
+      val raffleActiveScriptHash = getContractScriptHash(raffleActive)
+      ctx.compileContract(ConstantsBuilder.create()
+        .item("raffleActiveServiceToken", ErgoId.create(Configs.token.service).getBytes)
+        .item("raffleActiveHash", raffleActiveScriptHash)
+        .item("fee", Configs.fee)
+        .build(), contract.RaffleScriptWaitingToken)
+    })
+  }
+
+  private def generateTokenRepo(): ErgoContract ={
+    client.getClient.execute((ctx: BlockchainContext) => {
+      ctx.compileContract(ConstantsBuilder.create()
+        .item("raffleServiceToken", ErgoId.create(Configs.token.service).getBytes)
+        .build(), contract.raffleTokenIssueRepo)
+    })
+  }
+
+  private def generateTicket(): ErgoContract ={
+    client.getClient.execute((ctx: BlockchainContext) => {
+      ctx.compileContract(ConstantsBuilder.create()
+        .item("raffleServiceToken", ErgoId.create(Configs.token.service).getBytes)
+        .item("raffleNFT", ErgoId.create(Configs.token.nft).getBytes)
+        .item("fee", Configs.fee)
+        .build(), contract.ticketScript)
+    })
+  }
+
+  private def generateService(): ErgoContract = {
+    client.getClient.execute((ctx: BlockchainContext) => {
+      val raffleScriptHash = getContractScriptHash(raffleInactive)
+      val tokenIssueScriptHash: Digest32 = getContractScriptHash(tokenRepo)
+      ctx.compileContract(ConstantsBuilder.create()
+        .item("raffleScriptHash", raffleScriptHash)
+        .item("raffleTokenIssueHash", tokenIssueScriptHash)
+        .item("raffleServiceNFT", ErgoId.create(Configs.token.nft).getBytes)
+        .item("raffleServiceToken", ErgoId.create(Configs.token.service).getBytes)
+        .item("ownerPK", Configs.serviceOwner.getPublicKey)
+        .item("minFee", Configs.fee)
+        .build(), contract.RaffleServiceScript)
+    })
+  }
+
+  // TODO remove these
   def getRaffleServiceContract(): ErgoContract = {
-    getContract(CONTRACT_SERVICE)
+    service
   }
 
   def getTicketContract(): ErgoContract = {
-    getContract(CONTRACT_TICKET)
+    ticket
   }
 
   def getRaffleTokenIssueContract(): ErgoContract = {
-    getContract(CONTRACT_TOKEN_ISSUE)
+    tokenRepo
   }
 
   def getRaffleWaitingTokenContract(): ErgoContract = {
-    getContract(CONTRACT_RAFFLE_WAITING_TOKEN)
+    raffleInactive
   }
 
   def getRaffleActiveContract(): ErgoContract = {
-    getContract(CONTRACT_RAFFLE_ACTIVE)
+    raffleActive
   }
 
   def getRaffleWinnerContract(): ErgoContract = {
-    getContract(CONTRACT_WINNER)
+    raffleWinner
   }
 
   def getRaffleRedeemContract(): ErgoContract = {
-    getContract(CONTRACT_RAFFLE_REDEEM)
+    raffleRedeem
   }
 
   def getRaffleCreateProxyContract(pk: String, charity: Long, name: String, description: String, deadlineHeight: Long,
