@@ -22,6 +22,7 @@ object Configs extends ConfigHelper {
   lazy val creationThreadInterval: Int = readKey("creationThreadInterval").toInt
   lazy val donateThreadInterval: Int = readKey("donateThreadInterval").toInt
   lazy val refundThreadInterval: Int = readKey("refundThreadInterval").toInt
+  lazy val updateThreadInterval: Int = readKey("updateThreadInterval").toInt
 
   lazy val recaptchaKey: String = readKey("recaptchaKey", default = "not-set")
   lazy val recaptchaPubKey: String = readKey("recaptchaPubKey", default = "not-set")

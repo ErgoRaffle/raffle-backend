@@ -7,10 +7,11 @@ object JobsUtil {
   val create = "create"
   val donate = "donate"
   val refund = "refund"
-  val raffle = "raffle"
+  val update = "update"
 }
 
-class Jobs(createReqHandler: CreateReqHandler, donateReqHandler: DonateReqHandler, refundReqHandler: RefundReqHandler)
+class Jobs(createReqHandler: CreateReqHandler, donateReqHandler: DonateReqHandler, refundReqHandler: RefundReqHandler,
+           raffleUpdateHandler: RaffleUpdateHandler)
   extends Actor with ActorLogging {
   private val logger: Logger = Logger(this.getClass)
 
@@ -26,6 +27,10 @@ class Jobs(createReqHandler: CreateReqHandler, donateReqHandler: DonateReqHandle
     case JobsUtil.refund =>
       logger.info(s"Refund Request Thread is running")
       refundReqHandler.handleReqs()
+
+    case JobsUtil.update =>
+      logger.info("updating raffles information")
+      raffleUpdateHandler.handleReqs()
   }
 
 }

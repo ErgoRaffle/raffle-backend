@@ -5,16 +5,17 @@ import java.io.{PrintWriter, StringWriter}
 import javax.inject.{Inject, Singleton}
 import io.circe.{Json => ciJson}
 import network.{Client, Explorer}
-import org.ergoplatform.appkit.{Address, BlockchainContext, ErgoClientException, ErgoType, ErgoValue, InputBox, JavaHelpers, SignedTransaction}
+import org.ergoplatform.appkit.{BlockchainContext, ErgoClientException, ErgoType, ErgoValue, InputBox, JavaHelpers}
 import special.collection.Coll
 import java.util.Calendar
 
 import org.ergoplatform.ErgoAddress
 import sigmastate.serialization.ErgoTreeSerializer
-import network.GetRequest
+import network.Request
 import play.api.Logger
 import play.api.libs.json._
 
+import scala.collection.mutable.Seq
 import scala.util.Try
 
 final case class InvalidRecaptchaException(private val message: String = "Invalid recaptcha") extends Throwable(message)
@@ -221,7 +222,7 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
 
   def verifyRecaptcha(response: String): Unit = {
     try{
-      val res = GetRequest.httpGet(s"https://www.google.com/recaptcha/api/siteverify?secret=${Configs.recaptchaKey}&response=${response}")
+      val res = Request.httpGet(s"https://www.google.com/recaptcha/api/siteverify?secret=${Configs.recaptchaKey}&response=${response}")
 
       if (res.hcursor.downField("success").as[Boolean].getOrElse(new Throwable("parse error")) == false) {
         logger.info(s"response of google ${res}")
@@ -262,4 +263,26 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
 
   def currentTime: Long = Calendar.getInstance().getTimeInMillis / 1000
 
+  def raffleParticipants(tokenId: String): Long={
+    try {
+      var result = 0
+      var offset = 0
+      var response = explorer.getUnspentTokenBoxes(tokenId, offset, 100)
+      var items = response.hcursor.downField("items").as[List[ciJson]].getOrElse(null)
+        .filter(_.hcursor.downField("assets").as[Seq[ciJson]].getOrElse(null).size == 1)
+      Try {
+        while (items != null && items.nonEmpty) {
+          result += items.size
+          offset += 100
+          response = explorer.getUnspentTokenBoxes(tokenId, offset, 100)
+          items = response.hcursor.downField("items").as[List[ciJson]].getOrElse(null)
+            .filter(_.hcursor.downField("assets").as[Seq[ciJson]].getOrElse(null).size == 1)
+        }
+      }
+      result
+    } catch{
+      case _: java.lang.NullPointerException => 0
+      case e: Throwable => throw e
+    }
+  }
 }
