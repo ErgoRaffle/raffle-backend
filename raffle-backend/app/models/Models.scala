@@ -25,7 +25,8 @@ case class DonateReq(id: Long, ticketCount: Long, fee: Long, raffleDeadline: Lon
 case class RaffleCache(id: Long, name: String, description: String, goal: Long, raised: Long,
                        deadlineHeight: Long, serviceFee: Int, charityPercent: Int, charityAddr: String,
                        ticketPrice: Long, picLinks: String, tickets: Long, participants: Long, redeemedTickets: Long,
-                       state: String, tokenId: String, timeStamp: String, isUpdating: Boolean, completed: Boolean)
+                       state: String, tokenId: String, creationTime: Long, lastActivity: Long, isUpdating: Boolean,
+                       completed: Boolean)
 
 case class TxCache(id: Long, txId: String, tokenId: String, tokenCount: Long, txType: String, wallerAdd: String)
 
@@ -61,7 +62,7 @@ object Raffle{
       val name: String = new String(strListByte(0).toArray, StandardCharsets.UTF_8)
       val description: String = new String(strListByte(1).toArray, StandardCharsets.UTF_8)
       // TODO PICS
-      val picLinks = ""
+      val picLinks = "[]"
 
       new Raffle(name, description, goal, totalRaised, deadlineHeight, serviceFee.toInt, charityPercent.toInt,
         charityAddress, ticketPrice, totalSoldTicket, picLinks, tokenId)

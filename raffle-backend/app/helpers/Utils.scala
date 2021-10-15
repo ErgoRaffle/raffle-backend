@@ -27,6 +27,8 @@ final case class parseException(private val message: String = "Parsing failed") 
 final case class finishedRaffleException(private val message: String = "raffle finished") extends Throwable(message)
 final case class skipException(private val message: String = "skip") extends Throwable(message)
 final case class proveException(private val message: String = "Tx proving failed") extends Throwable(message)
+final case class internalException(private val message: String = "something went wrong") extends Throwable(message)
+final case class noRaffleException(private val message: String = "No raffle found in the network") extends Throwable(message)
 
 
 @Singleton

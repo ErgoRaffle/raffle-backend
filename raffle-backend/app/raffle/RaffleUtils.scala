@@ -2,8 +2,10 @@ package raffle
 
 import java.nio.charset.StandardCharsets
 
-import helpers.{Configs, Utils, connectionException, explorerException, failedTxException, parseException}
+import dao.RaffleCacheDAO
+import helpers.{Configs, Utils, connectionException, explorerException, failedTxException, internalException, parseException}
 import io.circe.Json
+import io.circe.parser.parse
 import javax.inject.Inject
 import network.{Client, Explorer}
 import org.ergoplatform.appkit.impl.ErgoTreeContract
@@ -14,79 +16,46 @@ import special.collection.Coll
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable.{ListBuffer, Seq}
-import scala.util.Try
 
-class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addresses, utils: Utils) {
+class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addresses, utils: Utils,
+                            raffleCacheDAO: RaffleCacheDAO) {
 
   private val logger: Logger = Logger(this.getClass)
 
-  def raffles(offset: Int, limit: Int): Json ={
+  def rafflesWithSorting(sorting: String, states: List[String], offset: Int, limit: Int): Json ={
     try {
-      var raffleCount = 0
-      var raffles: ListBuffer[Json] = ListBuffer()
-      var explorerOffset: Int = 0
-      var boxes = explorer.getUnspentTokenBoxes(Configs.token.service, 0, 100)
-      val total = boxes.hcursor.downField("total").as[Int].getOrElse(0)
-      while (raffleCount < offset + limit && explorerOffset < total) {
-        Try {
-          val items = boxes.hcursor.downField("items").as[Seq[Json]].getOrElse(throw new Throwable("parse error"))
-            .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).size > 1)
-            .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).head
-              .hcursor.downField("tokenId").as[String].getOrElse("") == Configs.token.service)
-
-          for (i <- items.indices) {
-            raffleCount += 1
-            if (raffleCount - 1 >= offset && raffleCount <= offset + limit) {
-              val id = items(i).hcursor.downField("assets").as[Seq[Json]].getOrElse(null)(1)
-                .hcursor.downField("tokenId").as[String].getOrElse("")
-              val registers = items(i).hcursor.downField("additionalRegisters").as[Json].getOrElse(null)
-              val R4: Array[Long] = ErgoValue.fromHex(registers.hcursor.downField("R4").as[Json].getOrElse(null)
-                .hcursor.downField("serializedValue").as[String].getOrElse(""))
-                .getValue.asInstanceOf[Coll[Long]].toArray
-              val charityPercent = R4(0)
-              val serviceFee = R4(1)
-              val winnerPercent = 100 - charityPercent - serviceFee
-              val goal = R4(3)
-              val deadlineHeight = R4(4)
-
-              val strListByte: Array[Coll[Byte]] = ErgoValue.fromHex(registers.hcursor.downField("R6").as[Json].getOrElse(null)
-                .hcursor.downField("serializedValue").as[String].getOrElse(""))
-                .getValue.asInstanceOf[Coll[Coll[Byte]]].toArray
-              val name: String = new String(strListByte(0).toArray, StandardCharsets.UTF_8)
-              val description: String = new String(strListByte(1).toArray, StandardCharsets.UTF_8)
-              raffles += Json.fromFields(List(
-                ("id", Json.fromString(id)),
-                ("name", Json.fromString(name)),
-                ("description", Json.fromString(description)),
-                ("deadline", Json.fromLong(deadlineHeight)),
-                ("winnerPercent", Json.fromLong(winnerPercent)),
-                ("charityPercent", Json.fromLong(charityPercent)),
-                ("minToRaise", Json.fromLong(goal)),
-              ))
-            }
-          }
-        }
-        explorerOffset += 100
-        boxes = explorer.getUnspentTokenBoxes(Configs.token.service, explorerOffset, 100)
+      val allRaffles = raffleCacheDAO.all.filter(raffle => states.contains(raffle.state))
+      val sortedRaffles = {
+        if(sorting == "createTime") allRaffles.sortBy(_.creationTime)(Ordering[Long].reverse)
+        else if(sorting == "deadline") allRaffles.sortBy(_.deadlineHeight)
+        else allRaffles.sortBy(_.lastActivity)(Ordering[Long].reverse)
       }
-      val currentHeight: Long = client.getHeight
-      var totalRaffles = raffleCount - offset
-      if (raffleCount > limit + offset) totalRaffles = limit
-      else if (totalRaffles < 0) totalRaffles = 0
+      val end = Math.min(limit + offset, sortedRaffles.size)
+      var raffles: ListBuffer[Json] = ListBuffer()
+      var raffleCount: Int = 0
+      for (i <- offset until end) {
+        raffleCount += 1
+        val raffle = sortedRaffles(i)
+        raffles += Json.fromFields(List(
+          ("id", Json.fromString(raffle.tokenId)),
+          ("name", Json.fromString(raffle.name)),
+          ("description", Json.fromString(raffle.description)),
+          ("deadline", Json.fromLong(raffle.deadlineHeight)),
+          ("picture", parse(raffle.picLinks).getOrElse(Json.fromValues(List[Json]()))),
+          ("erg", Json.fromLong(raffle.raised)),
+          ("goal", Json.fromLong(raffle.goal))
+        ))
+      }
 
       Json.fromFields(List(
         ("items", Json.fromValues(raffles.toList)),
-        ("total", Json.fromInt(totalRaffles)),
-        ("currentHeight", Json.fromLong(currentHeight))
+        ("total", Json.fromInt(raffleCount)),
       ))
-    } catch {
-      case e: connectionException => {
-        logger.warn(e.getMessage)
-        throw e
-      }
+    }
+    catch {
       case e: Throwable => {
         logger.error(utils.getStackTraceStr(e))
-        throw new Throwable("Error occurred during responding the request")
+        throw new internalException
       }
     }
   }

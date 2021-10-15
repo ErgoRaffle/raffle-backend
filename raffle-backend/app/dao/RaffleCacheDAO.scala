@@ -31,13 +31,14 @@ trait RaffleCacheComponent {
 
     def state = column[String]("STATE")
     def raffleToken = column[String]("RAFFLE_TOKEN")
-    def timeStamp = column[String]("TIME_STAMP")
+    def creationTime = column[Long]("CREATION_TIME")
+    def lastActivity = column[Long]("LAST_ACTIVITY")
     def isUpdating = column[Boolean]("IS_UPDATING")
     def completed = column[Boolean]("COMPLETED")
 
     def * = (id, name, description, goal, raised, deadlineHeight, serviceFee,
       charityPercent, charityAdd, ticketPrice, picLinks, tickets, participants, redeemedTickets, state, raffleToken,
-      timeStamp, isUpdating, completed) <> (RaffleCache.tupled, RaffleCache.unapply)
+      creationTime, lastActivity, isUpdating, completed) <> (RaffleCache.tupled, RaffleCache.unapply)
   }
 
 }
@@ -58,18 +59,18 @@ class RaffleCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
   def insert(name: String, description: String, goal: Long, raised: Long,
              deadlineHeight: Long, serviceFee: Int, charityPercent: Int, charityAdd: String,
              ticketPrice: Long, picLinks: String, tickets: Long, participants: Long, state: String,
-             raffleToken: String, timeStamp: String): Future[Unit] ={
+             raffleToken: String, creationTime: Long, lastActivity: Long): Future[Unit] ={
     val action = raffles += RaffleCache(1, name, description, goal, raised, deadlineHeight, serviceFee,
       charityPercent, charityAdd, ticketPrice, picLinks, tickets, participants, 0, state, raffleToken,
-      timeStamp, isUpdating = false, completed = false)
+      creationTime, lastActivity, isUpdating = false, completed = false)
     db.run(action).map(_ => ())
   }
 
-  def insert(raffle: Raffle, participants: Long, state: String, timeStamp: String): Future[Unit] ={
+  def insert(raffle: Raffle, participants: Long, state: String, creationTime: Long, lastActivity: Long): Future[Unit] ={
     val action = raffles += RaffleCache(1, raffle.name, raffle.description, raffle.goal, raffle.raised,
       raffle.deadlineHeight, raffle.serviceFee, raffle.charityPercent, raffle.charityAddr, raffle.ticketPrice,
-      raffle.picLinks, raffle.tickets, participants, 0, state, raffle.tokenId, timeStamp, isUpdating = false,
-      completed = false)
+      raffle.picLinks, raffle.tickets, participants, 0, state, raffle.tokenId, creationTime, lastActivity,
+      isUpdating = false, completed = false)
     db.run(action).map(_ => ())
   }
 
@@ -77,7 +78,7 @@ class RaffleCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
    * all raffles
    * @return list of CreateReq
    */
-  def all: Future[Seq[RaffleCache]] = db.run(raffles.result)
+  def all: Seq[RaffleCache] = Await.result(db.run(raffles.result), Duration.Inf)
 
   /**
    * @param id request id
@@ -99,9 +100,9 @@ class RaffleCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
     db.run(updateAction)
   }
 
-  def updateRaised(id: Long, raised: Long, tickets: Long, participants: Long): Unit ={
-    db.run(raffles.filter(_.id === id).map(ra => (ra.raised, ra.tickets, ra.participants))
-      .update((raised, tickets, participants)))
+  def updateRaised(id: Long, raised: Long, tickets: Long, participants: Long, lastActivity: Long): Unit ={
+    db.run(raffles.filter(_.id === id).map(ra => (ra.raised, ra.tickets, ra.participants, ra.lastActivity))
+      .update((raised, tickets, participants, lastActivity)))
   }
 
   def updateRedeemed(id: Long, redeemed: Long): Unit =
