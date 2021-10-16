@@ -38,10 +38,8 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     logger.info("Responding get raffles request")
     try {
       val validStates: List[String] ={
-        if(status == "active") List("active")
-        else if(status == "succeed") List("successful")
-        else if(status == "failed") List("unsuccessful")
-        else List("successful", "unsuccessful", "active")
+        if(status == "all") List("active", "succeed", "failed")
+        else List(status)
       }
       val result = raffleUtils.rafflesWithSorting(sorting, validStates, offset, limit)
       Ok(result.toString()).as("application/json")

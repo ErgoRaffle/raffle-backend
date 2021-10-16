@@ -7,6 +7,7 @@ import helpers.{Configs, Utils, connectionException, explorerException, failedTx
 import io.circe.Json
 import io.circe.parser.parse
 import javax.inject.Inject
+import models.Raffle
 import network.{Client, Explorer}
 import org.ergoplatform.appkit.impl.ErgoTreeContract
 import org.ergoplatform.appkit.{Address, ErgoToken, ErgoValue, InputBox}
@@ -18,7 +19,7 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable.{ListBuffer, Seq}
 
 class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addresses, utils: Utils,
-                            raffleCacheDAO: RaffleCacheDAO) {
+                            raffleCacheDAO: RaffleCacheDAO, raffleCacheUtils: RaffleCacheUtils) {
 
   private val logger: Logger = Logger(this.getClass)
 
@@ -113,69 +114,43 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
 
   def raffleByTokenId(tokenId: String): Json={
     try {
-      var boxes = explorer.getUnspentTokenBoxes(Configs.token.service, 0, 100)
-      var items = boxes.hcursor.downField("items").as[Seq[Json]].getOrElse(throw parseException())
-        .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).size > 1)
-        .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).head
-          .hcursor.downField("tokenId").as[String].getOrElse("") == Configs.token.service)
+      var boxes: Json = null
+      var raffleBox: Json = null
+      var offset = 0
 
-      var c: Int = 1
-      var item: Json = items.filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null)(1)
-        .hcursor.downField("tokenId").as[String].getOrElse("") == tokenId).head
-
-      while (item == null) {
-        boxes = explorer.getUnspentTokenBoxes(Configs.token.service, c * 100, 100)
-        items = boxes.hcursor.downField("items").as[Seq[Json]].getOrElse(throw parseException())
-          .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).head
-            .hcursor.downField("tokenId").as[String].getOrElse("")
-            == Configs.token.service)
-        c += 1
-        item = items.filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).head
+      while (raffleBox == null) {
+        boxes = explorer.getUnspentTokenBoxes(Configs.token.service, offset, 100)
+        raffleBox = boxes.hcursor.downField("items").as[Seq[Json]].getOrElse(throw parseException())
+          .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null)(1)
           .hcursor.downField("tokenId").as[String].getOrElse("") == tokenId).head
+        offset += 100
       }
 
-      val id = item.hcursor.downField("assets").as[Seq[Json]].getOrElse(null)(1)
-        .hcursor.downField("tokenId").as[String].getOrElse("")
-      val registers = item.hcursor.downField("additionalRegisters").as[Json].getOrElse(null)
-      val R4: Array[Long] = ErgoValue.fromHex(registers.hcursor.downField("R4").as[Json].getOrElse(null)
-        .hcursor.downField("serializedValue").as[String].getOrElse(""))
-        .getValue.asInstanceOf[Coll[Long]].toArray
-      val charityPercent = R4(0)
-      val serviceFee = R4(1)
-      val winnerPercent = 100 - charityPercent - serviceFee
-      val ticketPrice = R4(2)
-      val goal = R4(3)
-      val deadlineHeight = R4(4)
-      val totalSoldTicket = R4(5)
-      val totalRaised = totalSoldTicket * ticketPrice
-
-      val strListByte: Array[Coll[Byte]] = ErgoValue.fromHex(registers.hcursor.downField("R6").as[Json].getOrElse(null)
-        .hcursor.downField("serializedValue").as[String].getOrElse(""))
-        .getValue.asInstanceOf[Coll[Coll[Byte]]].toArray
-      val name: String = new String(strListByte(0).toArray, StandardCharsets.UTF_8)
-      val description: String = new String(strListByte(1).toArray, StandardCharsets.UTF_8)
-
-      val charityAddressByte: Array[Byte] = ErgoValue.fromHex(registers.hcursor.downField("R5").as[Json].getOrElse(null)
-        .hcursor.downField("serializedValue").as[String].getOrElse(""))
-        .getValue.asInstanceOf[Coll[Byte]].toArray
-      val charityAddress = Configs.addressEncoder.fromProposition(ErgoTreeSerializer.DefaultSerializer
-        .deserializeErgoTree(charityAddressByte)).get.toString
-      val currentHeight: Long = client.getHeight
-      val fee = Configs.fee
+      val raffle = Raffle(raffleBox)
+      val participants = utils.raffleParticipants(tokenId)
+      val savedRaffle = raffleCacheDAO.byTokenId(tokenId)
+      raffleCacheUtils.updateRaffle(savedRaffle, raffleBox)
 
       Json.fromFields(List(
-        ("id", Json.fromString(id)),
-        ("name", Json.fromString(name)),
-        ("description", Json.fromString(description)),
-        ("deadline", Json.fromLong(deadlineHeight)),
-        ("erg", Json.fromLong(totalRaised)),
-        ("charityAddr", Json.fromString(charityAddress)),
-        ("winnerPercent", Json.fromLong(winnerPercent)),
-        ("charityPercent", Json.fromLong(charityPercent)),
-        ("min", Json.fromLong(goal)),
-        ("ticketPrice", Json.fromLong(ticketPrice)),
-        ("fee", Json.fromLong(fee)),
-        ("currentHeight", Json.fromLong(currentHeight))
+        ("id", Json.fromString(raffle.tokenId)),
+        ("name", Json.fromString(raffle.name)),
+        ("description", Json.fromString(raffle.description)),
+        ("deadline", Json.fromLong(raffle.deadlineHeight)),
+        ("picture", parse(raffle.picLinks).getOrElse(Json.fromValues(List[Json]()))),
+        ("charity", Json.fromString(raffle.charityAddr)),
+        ("percent", Json.fromFields(List(
+          ("charity", Json.fromLong(raffle.charityPercent)),
+          ("winner", Json.fromLong(raffle.charityPercent)),
+          ("service", Json.fromLong(raffle.serviceFee))
+        ))),
+        ("ticket", Json.fromFields(List(
+          ("price", Json.fromLong(raffle.ticketPrice)),
+          ("sold", Json.fromLong(raffle.tickets)),
+          ("erg", Json.fromLong(raffle.raised))
+        ))),
+        ("donatedPeople", Json.fromLong(participants)),
+        ("status", Json.fromString(savedRaffle.state)),
+        ("txFee", Json.fromLong(Configs.fee))
       ))
     } catch {
       case e: explorerException => {
