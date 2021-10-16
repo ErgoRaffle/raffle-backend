@@ -20,7 +20,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
                                donateReqDAO: DonateReqDAO, addresses: Addresses){
   private val logger: Logger = Logger(this.getClass)
 
-  def findProxyAddress(pk: String, raffleId: String, ticketCounts: Long): (String, Long) = {
+  def findProxyAddress(pk: String, raffleId: String, ticketCounts: Long): (String, Long, Long) = {
     try {
       client.getClient.execute(ctx => {
         val raffleBox = utils.getRaffleBox(raffleId)
@@ -46,11 +46,11 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
 
         val feeEmissionAddress: ErgoAddress = Configs.addressEncoder.fromProposition(donateContract.getErgoTree).get
 
-        donateReqDAO.insert(ticketCounts, expectedDonate, raffleDeadline, 0, feeEmissionAddress.toString, raffleId,
+        val req: DonateReq = donateReqDAO.insert(ticketCounts, expectedDonate, raffleDeadline, 0, feeEmissionAddress.toString, raffleId,
           null, pk, LocalDateTime.now().toString, utils.currentTime + Configs.creationDelay)
         logger.debug("Donate payment address created")
 
-        (feeEmissionAddress.toString, expectedDonate)
+        (feeEmissionAddress.toString, expectedDonate, req.id)
       })
     }
     catch {

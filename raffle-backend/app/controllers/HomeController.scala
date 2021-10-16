@@ -159,9 +159,8 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
   }
 
 
-  def donateToId: Action[Json] = Action(circe.json) { implicit request =>
+  def donateToId(tokenId: String): Action[Json] = Action(circe.json) { implicit request =>
     try {
-      val raffleId: String = request.body.hcursor.downField("id").as[String].getOrElse(throw new Throwable("id field must exist"))
       val walletAddr: String = request.body.hcursor.downField("walletAddr").as[String].getOrElse(throw new Throwable("walletAddr field must exist"))
       val ticketCounts: Long = request.body.hcursor.downField("ticketCounts").as[Long].getOrElse(throw new Throwable("erg field must exist"))
       val captcha: String = request.body.hcursor.downField("captcha").as[String].getOrElse("")
@@ -170,15 +169,17 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       utils.validateAddress(walletAddr, "wallet")
       utils.validateTicketCounts(ticketCounts)
 
-      val response = donateReqUtils.findProxyAddress(walletAddr, raffleId, ticketCounts)
+      val response = donateReqUtils.findProxyAddress(walletAddr, tokenId, ticketCounts)
       val paymentAddress = response._1
       val fee = response._2
+      val requestId = response._3
       val deadline = Configs.creationDelay
 
       val result = Json.fromFields(List(
         ("deadline", Json.fromLong(deadline)),
         ("address", Json.fromString(paymentAddress)),
-        ("fee", Json.fromLong(fee))
+        ("erg", Json.fromLong(fee)),
+        ("requestId", Json.fromLong(requestId))
       ))
       Ok(result.toString()).as("application/json")
     } catch {
