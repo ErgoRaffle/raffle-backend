@@ -1,22 +1,22 @@
 package controllers
 
+import dao.{CreateReqDAO, DonateReqDAO}
 import helpers.{Configs, Utils}
 import io.circe.Json
 import io.circe.generic.codec.DerivedAsObjectCodec.deriveCodec
 import network.{Client, Explorer}
 import raffle.{Addresses, CreateReqUtils, DonateReqUtils, RaffleUtils}
-
 import play.api.Logger
 import play.api.libs.circe.Circe
 import play.api.mvc._
-
 import javax.inject._
 
 
 @Singleton
 class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: Explorer, donateReqUtils: DonateReqUtils,
-                               client: Client, createReqUtils: CreateReqUtils, raffleUtils: RaffleUtils,
-                               val controllerComponents: ControllerComponents, utils: Utils) extends BaseController
+                               client: Client, createReqUtils: CreateReqUtils, raffleUtils: RaffleUtils, utils: Utils,
+                               createReqDAO: CreateReqDAO, donateReqDAO: DonateReqDAO,
+                               val controllerComponents: ControllerComponents) extends BaseController
   with Circe {
   private val logger: Logger = Logger(this.getClass)
 
@@ -123,6 +123,38 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       Ok(result.toString()).as("application/json")
     } catch {
       case e: Throwable => exception(e)
+    }
+  }
+
+  def createReqStatus(id: Long) = Action { implicit request: Request[AnyContent] =>
+    try {
+      val req = createReqDAO.byId(id)
+      val state: String = {
+        if(req.state == 0 && !req.deleted) "waiting"
+        else if(req.state == 1 && !req.deleted) "createdWaiting"
+        else if(req.state != 2 && req.deleted) "expired"
+        else "done"
+      }
+      val result = Json.fromFields(List(("status", Json.fromString(state))))
+      Ok(result.toString()).as("application/json")
+    } catch{
+      case _:Throwable => throw new Throwable("No request found with this id")
+    }
+  }
+
+  def donateReqStatus(id: Long) = Action { implicit request: Request[AnyContent] =>
+    try {
+      val req = donateReqDAO.byId(id)
+      val state: String = {
+        if(req.state == 0 && !req.deleted) "waiting"
+        else if(req.state == 1 && !req.deleted) "createdWaiting"
+        else if(req.state != 2 && req.deleted) "expired"
+        else "done"
+      }
+      val result = Json.fromFields(List(("status", Json.fromString(state))))
+      Ok(result.toString()).as("application/json")
+    } catch{
+      case _:Throwable => throw new Throwable("No request found with this id")
     }
   }
 

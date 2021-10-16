@@ -6,6 +6,8 @@ GET     /api/info                                    controllers.HomeController.
 GET     /api/raffle                                  controllers.HomeController.getRaffles(sorting: String ?= "activity", status: String ?= "all", offset: Int ?= 0, limit: Int ?= 100)
 GET     /api/raffle/:tokenId                         controllers.HomeController.getRafflesByTokenId(tokenId: String)
 POST    /api/raffle                                  controllers.HomeController.addRaffle
+GET     /api/raffle/:id/status                       controllers.HomeController.createReqStatus(id: Long)
+GET     /api/raffle/:tokenId/donate/:id/status       controllers.HomeController.donateReqStatus(id: Long)
 POST    /api/raffle/donate                           controllers.HomeController.donateToId
 POST    /api/tickets                                 controllers.HomeController.getTickets()
 GET     /api/explorer                                controllers.HomeController.getExplorer()

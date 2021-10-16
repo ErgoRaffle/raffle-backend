@@ -73,7 +73,7 @@ class CreateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
    * @param id request id
    * @return request associated with the id
    */
-  def byId(id: Long): CreateReq = Await.result(db.run(requests.filter(_.deleted === false).filter(req => req.id === id).result.head), Duration.Inf)
+  def byId(id: Long): CreateReq = Await.result(db.run(requests.filter(req => req.id === id).result.head), Duration.Inf)
 
   /**
    * deletes by id

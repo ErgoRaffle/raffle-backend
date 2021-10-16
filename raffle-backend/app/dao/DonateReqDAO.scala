@@ -65,7 +65,7 @@ class DonateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
    * @param id request id
    * @return request associated with the id
    */
-  def byId(id: Long): DonateReq = Await.result(db.run(requests.filter(req => req.id === id).filter(_.deleted === false).result.head), Duration.Inf)
+  def byId(id: Long): DonateReq = Await.result(db.run(requests.filter(req => req.id === id).result.head), Duration.Inf)
 
   /**
    * deletes by id
