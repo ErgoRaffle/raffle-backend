@@ -188,27 +188,33 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
     }
   }
 
-  def walletTickets(walletAdd: String, offset: Int, limit: Int): Json = {
+  def walletDonations(walletAdd: String, offset: Int, limit: Int): Json = {
     try {
-      var selectedTickets: ListBuffer[Json] = ListBuffer()
+      var donations: ListBuffer[Json] = ListBuffer()
       var totalRecords: Long = 0
-      val tickets: Seq[Json] = explorer.getTicketsByWallet(addresses.getTicketContract().getErgoTree, walletAdd)
-          .hcursor.downField("items").as[Seq[Json]].getOrElse(null)
+      val tickets: List[(String, Long)] = explorer.getTicketsByWallet(addresses.getTicketContract().getErgoTree, walletAdd)
+        .hcursor.downField("items").as[Seq[Json]].getOrElse(null).map(t => Ticket(t)).map(t => (t.tokenId, t.tokenCount))
+        .groupBy(_._1).mapValues(seq => seq.reduce{(x,y) => (x._1, x._2 + y._2)}._2).toList
       val end = Math.min(tickets.size, offset + limit)
 
       for (i <- offset until end) {
-        val ticket = Ticket(tickets(i))
-        val link = Configs.explorerFront + "en/transactions/" + ticket.txId
-        selectedTickets += Json.fromFields(List(
-          ("id", Json.fromString(ticket.txId)),
-          ("tickets", Json.fromLong(ticket.tokenCount)),
-          ("link", Json.fromString(link))
+        val ticket = tickets(i)
+        val raffle = raffleCacheDAO.byTokenId(ticket._1)
+        donations += Json.fromFields(List(
+          ("id", Json.fromString(raffle.tokenId)),
+          ("name", Json.fromString(raffle.name)),
+          ("description", Json.fromString(raffle.description)),
+          ("deadline", Json.fromLong(raffle.deadlineHeight)),
+          ("picture", parse(raffle.picLinks).getOrElse(Json.fromValues(List[Json]()))),
+          ("erg", Json.fromLong(raffle.raised)),
+          ("goal", Json.fromLong(raffle.goal)),
+          ("tickets", Json.fromLong(ticket._2)),
         ))
         totalRecords += 1
       }
 
       Json.fromFields(List(
-        ("items", Json.fromValues(selectedTickets.toList)),
+        ("items", Json.fromValues(donations.toList)),
         ("total", Json.fromLong(totalRecords))
       ))
     } catch {
@@ -221,6 +227,40 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
         logger.error(utils.getStackTraceStr(e))
         throw new internalException
       }
+    }
+  }
+
+  def walletWins(walletAdd: String, offset: Int, limit: Int): Json = {
+    try{
+      var wins: ListBuffer[Json] = ListBuffer()
+      val tickets = txCacheDAO.winnerByWalletAdd(walletAdd)
+      val end = Math.min(tickets.size, offset + limit)
+      var totalRecords: Long = 0
+
+      for (i <- offset until end) {
+        val ticket = tickets(i)
+        val raffle = raffleCacheDAO.byTokenId(ticket.tokenId)
+        val link = Configs.explorerFront + "en/transactions/" + ticket.txId
+        wins += Json.fromFields(List(
+          ("id", Json.fromString(raffle.tokenId)),
+          ("name", Json.fromString(raffle.name)),
+          ("description", Json.fromString(raffle.description)),
+          ("deadline", Json.fromLong(raffle.deadlineHeight)),
+          ("picture", parse(raffle.picLinks).getOrElse(Json.fromValues(List[Json]()))),
+          ("erg", Json.fromLong(raffle.raised)),
+          ("goal", Json.fromLong(raffle.goal)),
+          ("tickets", Json.fromLong(ticket.tokenCount)),
+          ("link", Json.fromString(link))
+        ))
+        totalRecords += 1
+      }
+
+      Json.fromFields(List(
+        ("items", Json.fromValues(wins.toList)),
+        ("total", Json.fromLong(totalRecords))
+      ))
+    } catch{
+      case _: Throwable => throw new Throwable("No winner tickets found")
     }
   }
 

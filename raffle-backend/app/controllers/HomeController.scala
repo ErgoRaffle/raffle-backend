@@ -207,12 +207,22 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
 
   def walletTickets(walletAdd: String, offset: Int, limit: Int): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
-      val result = raffleUtils.walletTickets(walletAdd, offset, Math.min(limit, 100))
+      val result = raffleUtils.walletDonations(walletAdd, offset, Math.min(limit, 100))
       Ok(result.toString()).as("application/json")
     } catch{
       case e: Throwable => exception(e)
     }
   }
+
+  def walletWins(walletAdd: String, offset: Int, limit: Int): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
+    try {
+      val result = raffleUtils.walletWins(walletAdd, offset, Math.min(limit, 100))
+      Ok(result.toString()).as("application/json")
+    } catch{
+      case e: Throwable => exception(e)
+    }
+  }
+
   def servicePercent(): Action[AnyContent] = Action {
     val serviceBox = utils.getServiceBox()
     val p = serviceBox.getRegisters.get(0).getValue.asInstanceOf[Long]
