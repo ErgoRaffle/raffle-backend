@@ -101,7 +101,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
       }
       case e: Throwable => {
         logger.error(utils.getStackTraceStr(e))
-        throw new Throwable("Error occurred during responding the request")
+        throw new internalException
       }
     }
   }
@@ -155,7 +155,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
       case _: java.util.NoSuchElementException => throw new Throwable("No Raffle exist with this id")
       case e: Throwable => {
         logger.error(utils.getStackTraceStr(e))
-        throw new Throwable("Something is wrong")
+        throw new internalException
       }
     }
   }
@@ -185,6 +185,42 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
       ))
     } catch {
       case _: Throwable => throw new Throwable("This raffle doesn't exist or not finished yet, no transaction found")
+    }
+  }
+
+  def walletTickets(walletAdd: String, offset: Int, limit: Int): Json = {
+    try {
+      var selectedTickets: ListBuffer[Json] = ListBuffer()
+      var totalRecords: Long = 0
+      val tickets: Seq[Json] = explorer.getTicketsByWallet(addresses.getTicketContract().getErgoTree, walletAdd)
+          .hcursor.downField("items").as[Seq[Json]].getOrElse(null)
+      val end = Math.min(tickets.size, offset + limit)
+
+      for (i <- offset until end) {
+        val ticket = Ticket(tickets(i))
+        val link = Configs.explorerFront + "en/transactions/" + ticket.txId
+        selectedTickets += Json.fromFields(List(
+          ("id", Json.fromString(ticket.txId)),
+          ("tickets", Json.fromLong(ticket.tokenCount)),
+          ("link", Json.fromString(link))
+        ))
+        totalRecords += 1
+      }
+
+      Json.fromFields(List(
+        ("items", Json.fromValues(selectedTickets.toList)),
+        ("total", Json.fromLong(totalRecords))
+      ))
+    } catch {
+      case _: parseException => throw connectionException()
+      case e: connectionException => {
+        logger.warn(e.getMessage)
+        throw e
+      }
+      case e: Throwable => {
+        logger.error(utils.getStackTraceStr(e))
+        throw new internalException
+      }
     }
   }
 

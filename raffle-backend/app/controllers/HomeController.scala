@@ -125,7 +125,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     }
   }
 
-  def createReqStatus(id: Long) = Action { implicit request: Request[AnyContent] =>
+  def createReqStatus(id: Long): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
       var req: CreateReq = null
       try {
@@ -146,7 +146,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     }
   }
 
-  def donateReqStatus(id: Long): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
+  def donateReqStatus(tokenId: String, id: Long): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
       var req: DonateReq = null
       try {
@@ -196,7 +196,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     }
   }
 
-  def raffleTransactions(tokenId: String, limit: Int, offset: Int): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
+  def raffleTransactions(tokenId: String, offset: Int, limit: Int): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
       val result = raffleUtils.raffleTxsByTokenId(tokenId, offset, Math.min(limit, 100))
       Ok(result.toString()).as("application/json")
@@ -205,6 +205,14 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     }
   }
 
+  def walletTickets(walletAdd: String, offset: Int, limit: Int): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
+    try {
+      val result = raffleUtils.walletTickets(walletAdd, offset, Math.min(limit, 100))
+      Ok(result.toString()).as("application/json")
+    } catch{
+      case e: Throwable => exception(e)
+    }
+  }
   def servicePercent(): Action[AnyContent] = Action {
     val serviceBox = utils.getServiceBox()
     val p = serviceBox.getRegisters.get(0).getValue.asInstanceOf[Long]

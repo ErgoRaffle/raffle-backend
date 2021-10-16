@@ -4,7 +4,7 @@ import helpers.{Configs, explorerException}
 import io.circe.Json
 import io.circe.parser.parse
 import javax.inject.Singleton
-import org.ergoplatform.appkit.ErgoTreeTemplate
+import org.ergoplatform.appkit.{Address, ErgoTreeTemplate}
 import play.api.libs.json.{Json => playJson}
 import scalaj.http.{BaseHttp, HttpConstants}
 import sigmastate.Values.ErgoTree
@@ -93,13 +93,27 @@ class Explorer() {
     case _: Throwable => Json.Null
   }
 
-  def getBoxesByErgoTree(ergoTree: ErgoTree, tokenId: String): Json ={
+  def getBoxesByErgoTree(ergoTree: ErgoTree, tokenId: String): Json = try {
     val ergoTreeTemplateHash = scorex.crypto.hash.Sha256(ErgoTreeTemplate.fromErgoTree(ergoTree).getBytes).map("%02x".format(_)).mkString
     val json = Json.fromFields(List(
       ("ergoTreeTemplateHash", Json.fromString(ergoTreeTemplateHash)),
       ("assets", Json.fromValues(Array(Json.fromString(tokenId)))),
     ))
     Request.httpPost(boxSearch, json.toString())
+  } catch {
+    case _:Throwable => Json.Null
+  }
+
+  def getTicketsByWallet(ticketErgoTree: ErgoTree, address: String): Json = try{
+    val ergoTreeTemplateHash = scorex.crypto.hash.Sha256(ErgoTreeTemplate.fromErgoTree(ticketErgoTree).getBytes).map("%02x".format(_)).mkString
+    val wallet = Address.create(address).getErgoAddress.script.bytes.map("%02x".format(_)).mkString
+    val json = Json.fromFields(List(
+      ("ergoTreeTemplateHash", Json.fromString(ergoTreeTemplateHash)),
+      ("registers", Json.fromFields(List(("R4", Json.fromString(wallet)))))
+    ))
+    Request.httpPost(boxSearch, json.toString())
+  } catch {
+    case _:Throwable => Json.Null
   }
 }
 
