@@ -3,7 +3,7 @@ package raffle
 import java.time.LocalDateTime
 
 import dao.{RaffleCacheDAO, TxCacheDAO}
-import helpers.{Configs, Utils}
+import helpers.{Configs, Utils, connectionException, noRaffleException, parseException}
 import javax.inject.Inject
 import network.{Client, Explorer}
 import play.api.Logger
@@ -24,73 +24,92 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
 
   def raffleSearch(): Unit = {
     logger.debug("Searching for new raffles started")
+    try {
+      var items: List[Json] = null
+      var response = explorer.getUnspentTokenBoxes(Configs.token.service, 0, 100)
+      try {
+        items = response.hcursor.downField("items").as[List[Json]].getOrElse(null)
+          .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).size > 1)
+          .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).head
+            .hcursor.downField("tokenId").as[String].getOrElse("") == Configs.token.service)
+      } catch {
+        case _: Throwable => throw new noRaffleException
+      }
+      raffleCacheDAO.updatingStatus()
 
-    var response = explorer.getUnspentTokenBoxes(Configs.token.service, 0, 100)
-    var items = response.hcursor.downField("items").as[List[Json]].getOrElse(null)
-      .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).size > 1)
-      .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).head
-        .hcursor.downField("tokenId").as[String].getOrElse("") == Configs.token.service)
-    raffleCacheDAO.updatingStatus()
-
-    var offset: Int = 100
-    while (items != null && items.nonEmpty) {
-      items.foreach(box => {
-        val raffle: Raffle = Raffle(box)
-        val address = box.hcursor.downField("address").as[String].getOrElse("")
-        val state = raffleStateByAddress(address)
+      var offset: Int = 100
+      while (items != null && items.nonEmpty) {
+        items.foreach(box => {
+          val raffle: Raffle = Raffle(box)
+          val address = box.hcursor.downField("address").as[String].getOrElse("")
+          val state = raffleStateByAddress(address)
+          try {
+            val savedRaffle = raffleCacheDAO.byTokenId(raffle.tokenId)
+            raffleCacheDAO.acceptUpdating(savedRaffle.id)
+            if (state != savedRaffle.state) raffleCacheDAO.updateStateById(savedRaffle.id, state)
+            if (state == "active" && raffle.tickets != savedRaffle.tickets) {
+              val participants: Long = utils.raffleParticipants(raffle.tokenId)
+              val lastActivity: Long = box.hcursor.downField("settlementHeight").as[Long].getOrElse(0)
+              raffleCacheDAO.updateRaised(savedRaffle.id, raffle.raised, raffle.tickets, participants, lastActivity)
+            }
+            if (state == "unsuccessful" && savedRaffle.tickets - savedRaffle.redeemedTickets != raffle.tickets) {
+              UnsuccessfulRaffleTxUpdate(raffle.tokenId)
+              raffleCacheDAO.updateRedeemed(savedRaffle.id, raffle.tickets - savedRaffle.tickets)
+            }
+            logger.debug(s"raffle with id ${raffle.tokenId} had been updated so far")
+          }
+          catch {
+            case e: Throwable => {
+              logger.debug("New raffle found with Token Id: " + raffle.tokenId)
+              val participants = utils.raffleParticipants(raffle.tokenId)
+              // TODO change the timestamp
+              val lastActivity: Long = box.hcursor.downField("settlementHeight").as[Long].getOrElse(0)
+              raffleCacheDAO.insert(raffle, participants, state, lastActivity, lastActivity)
+            }
+          }
+        })
+        response = explorer.getUnspentTokenBoxes(Configs.token.service, offset, 100)
         try {
-          val savedRaffle = raffleCacheDAO.byTokenId(raffle.tokenId)
-          raffleCacheDAO.acceptUpdating(savedRaffle.id)
-          if(state != savedRaffle.state) raffleCacheDAO.updateStateById(savedRaffle.id, state)
-          if(state == "active" && raffle.tickets != savedRaffle.tickets){
-            val participants = utils.raffleParticipants(raffle.tokenId)
-            raffleCacheDAO.updateRaised(savedRaffle.id, raffle.raised, raffle.tickets, participants)
-          }
-          if(state == "unsuccessful" && savedRaffle.tickets - savedRaffle.redeemedTickets != raffle.tickets){
-            UnsuccessfulRaffleTxUpdate(raffle.tokenId)
-            raffleCacheDAO.updateRedeemed(savedRaffle.id, raffle.tickets-savedRaffle.tickets)
-          }
-          logger.debug(s"raffle with id ${raffle.tokenId} had been updated so far")
+          items = response.hcursor.downField("items").as[List[Json]].getOrElse(null)
+            .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).size > 1)
+            .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).head
+              .hcursor.downField("tokenId").as[String].getOrElse("") == Configs.token.service)
+        } catch {
+          case _: Throwable => throw new noRaffleException
         }
-        catch{
-          case e: Throwable => {
-            logger.debug("New raffle found with Token Id: " + raffle.tokenId)
-            val participants = utils.raffleParticipants(raffle.tokenId)
-            // TODO change the timestamp
-            raffleCacheDAO.insert(raffle, participants, state, LocalDateTime.now().toString)
+        offset += 100
+      }
+
+      raffleCacheDAO.selectAfterUpdating().foreach(raffle => {
+        if (raffle.state == "successful") {
+          try {
+            txCacheDAO.winnerByTokenId(raffle.tokenId)
+            raffleCacheDAO.completeByTokenId(raffle.tokenId)
+          }
+          catch {
+            case _: Throwable => SuccessfulRaffleTxUpdate(raffle.tokenId)
+          }
+        }
+        else if (raffle.state == "unsuccessful") {
+          if (raffle.tickets == raffle.redeemedTickets) raffleCacheDAO.completeByTokenId(raffle.tokenId)
+          else UnsuccessfulRaffleTxUpdate(raffle.tokenId)
+        }
+        else {
+          if (raffle.deadlineHeight > client.getHeight)
+            logger.warn(s"uncompleted raffle with token ${raffle.tokenId} not founded in the network")
+          else {
+            if (raffle.raised >= raffle.goal) raffleCacheDAO.updateStateById(raffle.id, "successful")
+            else raffleCacheDAO.updateStateById(raffle.id, "unsuccessful")
           }
         }
       })
-      response = explorer.getUnspentTokenBoxes(Configs.token.service, offset, 100)
-      items = response.hcursor.downField("items").as[List[Json]].getOrElse(null)
-        .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).size > 1)
-        .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).head
-          .hcursor.downField("tokenId").as[String].getOrElse("") == Configs.token.service)
-      offset += 100
     }
-
-    raffleCacheDAO.selectAfterUpdating().foreach(raffle =>{
-      if(raffle.state == "successful"){
-        try{
-          txCacheDAO.winnerByTokenId(raffle.tokenId)
-          raffleCacheDAO.completeByTokenId(raffle.tokenId)
-        }
-        catch{ case _:Throwable => SuccessfulRaffleTxUpdate(raffle.tokenId)}
-      }
-      else if(raffle.state == "unsuccessful"){
-        if(raffle.tickets == raffle.redeemedTickets) raffleCacheDAO.completeByTokenId(raffle.tokenId)
-        else UnsuccessfulRaffleTxUpdate(raffle.tokenId)
-      }
-      else {
-        if (raffle.deadlineHeight < client.getHeight)
-          logger.warn(s"uncompleted raffle with token ${raffle.tokenId} not founded in the network")
-        else {
-          if (raffle.raised >= raffle.goal) raffleCacheDAO.updateStateById(raffle.id, "successful")
-          else raffleCacheDAO.updateStateById(raffle.id, "unsuccessful")
-        }
-      }
-    })
-
+    catch{
+      case e: noRaffleException => logger.warn(e.getMessage)
+      case e: connectionException => logger.info(e.getMessage)
+      case _: parseException =>
+      case e: Throwable => logger.error(utils.getStackTraceStr(e))
+    }
     logger.info("Updating raffles finished")
   }
 

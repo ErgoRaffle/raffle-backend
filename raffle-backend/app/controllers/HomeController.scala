@@ -34,10 +34,16 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
   }
 
 
-  def getRaffles(offset: Int, limit: Int) = Action { implicit request: Request[AnyContent] =>
+  def getRaffles(sorting: String, status: String, offset: Int, limit: Int) = Action { implicit request: Request[AnyContent] =>
     logger.info("Responding get raffles request")
     try {
-      val result = raffleUtils.raffles(offset, limit)
+      val validStates: List[String] ={
+        if(status == "active") List("active")
+        else if(status == "succeed") List("successful")
+        else if(status == "failed") List("unsuccessful")
+        else List("successful", "unsuccessful", "active")
+      }
+      val result = raffleUtils.rafflesWithSorting(sorting, validStates, offset, limit)
       Ok(result.toString()).as("application/json")
     } catch {
       case e: Throwable => exception(e)
@@ -156,14 +162,16 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     Ok(result.toString()).as("application/json")
   }
 
-  def recaptchaKey(): Action[AnyContent] = Action {
+  def info(): Action[AnyContent] = Action {
     val key = Configs.recaptchaPubKey
     var required = true
     if(key == "not-set") required = false
+    val currentHeight = client.getHeight
 
     val result = Json.fromFields(List(
       ("pubKey", Json.fromString(key)),
-      ("required", Json.fromBoolean(required))
+      ("required", Json.fromBoolean(required)),
+      ("height", Json.fromLong(currentHeight))
     ))
     Ok(result.toString()).as("application/json")
   }
