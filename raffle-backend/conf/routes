@@ -9,6 +9,7 @@ POST    /api/raffle                                  controllers.HomeController.
 GET     /api/raffle/:id/status                       controllers.HomeController.createReqStatus(id: Long)
 GET     /api/raffle/:tokenId/donate/:id/status       controllers.HomeController.donateReqStatus(id: Long)
 POST    /api/raffle/:tokenId/donate                  controllers.HomeController.donateToId(tokenId: String)
+GET     /api/raffle/:tokenId/transaction             controllers.HomeController.raffleTransactions(tokenId: String, offset: Int ?= 0, limit: Int ?= 100)
 POST    /api/tickets                                 controllers.HomeController.getTickets()
 GET     /api/explorer                                controllers.HomeController.getExplorer()
 GET     /api/raffle_share                            controllers.HomeController.servicePercent()

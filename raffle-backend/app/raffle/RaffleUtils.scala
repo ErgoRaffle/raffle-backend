@@ -2,7 +2,7 @@ package raffle
 
 import java.nio.charset.StandardCharsets
 
-import dao.RaffleCacheDAO
+import dao.{RaffleCacheDAO, TxCacheDAO}
 import helpers.{Configs, Utils, connectionException, explorerException, failedTxException, internalException, parseException}
 import io.circe.Json
 import io.circe.parser.parse
@@ -19,7 +19,7 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable.{ListBuffer, Seq}
 
 class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addresses, utils: Utils,
-                            raffleCacheDAO: RaffleCacheDAO, raffleCacheUtils: RaffleCacheUtils) {
+                            raffleCacheDAO: RaffleCacheDAO, raffleCacheUtils: RaffleCacheUtils, txCacheDAO: TxCacheDAO) {
 
   private val logger: Logger = Logger(this.getClass)
 
@@ -164,6 +164,30 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
         throw new Throwable("Something is wrong")
       }
     }
+  }
+
+  def raffleTxsByTokenId(tokenId: String, offset: Int, limit: Int): Json ={
+    var transactions: ListBuffer[Json] = ListBuffer()
+    var txCount: Int = 0
+    val txs = txCacheDAO.byTokenId(tokenId)
+    val end = Math.min(txs.size, offset+limit)
+
+    for(i <- offset until end) {
+      val tx = txs(i)
+      txCount += 1
+      val link = Configs.explorerFront + "en/transactions/" + tx.txId
+      transactions += Json.fromFields(List(
+        ("id", Json.fromString(tx.txId)),
+        ("address", Json.fromString(tx.wallerAdd)),
+        ("type", Json.fromString(tx.txType)),
+        ("tickets", Json.fromLong(tx.tokenCount)),
+        ("link", Json.fromString(link))
+      ))
+    }
+    Json.fromFields(List(
+      ("items", Json.fromValues(transactions.toList)),
+      ("total", Json.fromInt(txCount))
+    ))
   }
 
   def refundBoxes(boxes: List[InputBox], address: Address): String = {

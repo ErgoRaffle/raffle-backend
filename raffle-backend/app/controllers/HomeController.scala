@@ -41,7 +41,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
         if(status == "all") List("active", "succeed", "failed")
         else List(status)
       }
-      val result = raffleUtils.rafflesWithSorting(sorting, validStates, offset, limit)
+      val result = raffleUtils.rafflesWithSorting(sorting, validStates, offset, Math.min(limit, 100))
       Ok(result.toString()).as("application/json")
     } catch {
       case e: Throwable => exception(e)
@@ -142,7 +142,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     }
   }
 
-  def donateReqStatus(id: Long) = Action { implicit request: Request[AnyContent] =>
+  def donateReqStatus(id: Long): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
       val req = donateReqDAO.byId(id)
       val state: String = {
@@ -184,6 +184,15 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       Ok(result.toString()).as("application/json")
     } catch {
       case e: Throwable => exception(e)
+    }
+  }
+
+  def raffleTransactions(tokenId: String, limit: Int, offset: Int): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
+    try {
+      val result = raffleUtils.raffleTxsByTokenId(tokenId, offset, Math.min(limit, 100))
+      Ok(result.toString()).as("application/json")
+    } catch{
+      case _: Throwable => throw new Throwable("This raffle doesn't exist or not finished yet, no transaction found")
     }
   }
 
