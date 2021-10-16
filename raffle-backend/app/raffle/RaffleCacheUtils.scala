@@ -8,7 +8,7 @@ import javax.inject.Inject
 import network.{Client, Explorer}
 import play.api.Logger
 import io.circe.Json
-import models.{Raffle, Ticket}
+import models.{Raffle, RaffleCache, Ticket}
 
 
 class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, addresses: Addresses,
@@ -18,8 +18,24 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
   def raffleStateByAddress(address: String): String ={
     if(address == addresses.raffleInactiveAddress.toString) "inactive"
     else if(address == addresses.raffleActiveAddress.toString) "active"
-    else if(address == addresses.raffleRedeemAddress.toString) "unsuccessful"
+    else if(address == addresses.raffleRedeemAddress.toString) "failed"
     else "other"
+  }
+
+  def updateRaffle(savedRaffle: RaffleCache, raffleBox: Json): Unit ={
+    val address = raffleBox.hcursor.downField("address").as[String].getOrElse("")
+    val state = raffleStateByAddress(address)
+    val raffle = Raffle(raffleBox)
+    if (state != savedRaffle.state) raffleCacheDAO.updateStateById(savedRaffle.id, state)
+    if (state == "active" && raffle.tickets != savedRaffle.tickets) {
+      val participants: Long = utils.raffleParticipants(raffle.tokenId)
+      val lastActivity: Long = raffleBox.hcursor.downField("settlementHeight").as[Long].getOrElse(0)
+      raffleCacheDAO.updateRaised(savedRaffle.id, raffle.raised, raffle.tickets, participants, lastActivity)
+    }
+    if (state == "failed" && savedRaffle.tickets - savedRaffle.redeemedTickets != raffle.tickets) {
+      UnsuccessfulRaffleTxUpdate(raffle.tokenId)
+      raffleCacheDAO.updateRedeemed(savedRaffle.id, raffle.tickets - savedRaffle.tickets)
+    }
   }
 
   def raffleSearch(): Unit = {
@@ -46,16 +62,7 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
           try {
             val savedRaffle = raffleCacheDAO.byTokenId(raffle.tokenId)
             raffleCacheDAO.acceptUpdating(savedRaffle.id)
-            if (state != savedRaffle.state) raffleCacheDAO.updateStateById(savedRaffle.id, state)
-            if (state == "active" && raffle.tickets != savedRaffle.tickets) {
-              val participants: Long = utils.raffleParticipants(raffle.tokenId)
-              val lastActivity: Long = box.hcursor.downField("settlementHeight").as[Long].getOrElse(0)
-              raffleCacheDAO.updateRaised(savedRaffle.id, raffle.raised, raffle.tickets, participants, lastActivity)
-            }
-            if (state == "unsuccessful" && savedRaffle.tickets - savedRaffle.redeemedTickets != raffle.tickets) {
-              UnsuccessfulRaffleTxUpdate(raffle.tokenId)
-              raffleCacheDAO.updateRedeemed(savedRaffle.id, raffle.tickets - savedRaffle.tickets)
-            }
+            updateRaffle(savedRaffle, box)
             logger.debug(s"raffle with id ${raffle.tokenId} had been updated so far")
           }
           catch {
@@ -81,7 +88,7 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
       }
 
       raffleCacheDAO.selectAfterUpdating().foreach(raffle => {
-        if (raffle.state == "successful") {
+        if (raffle.state == "succeed") {
           try {
             txCacheDAO.winnerByTokenId(raffle.tokenId)
             raffleCacheDAO.completeByTokenId(raffle.tokenId)
@@ -90,7 +97,7 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
             case _: Throwable => SuccessfulRaffleTxUpdate(raffle.tokenId)
           }
         }
-        else if (raffle.state == "unsuccessful") {
+        else if (raffle.state == "failed") {
           if (raffle.tickets == raffle.redeemedTickets) raffleCacheDAO.completeByTokenId(raffle.tokenId)
           else UnsuccessfulRaffleTxUpdate(raffle.tokenId)
         }
@@ -98,8 +105,8 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
           if (raffle.deadlineHeight > client.getHeight)
             logger.warn(s"uncompleted raffle with token ${raffle.tokenId} not founded in the network")
           else {
-            if (raffle.raised >= raffle.goal) raffleCacheDAO.updateStateById(raffle.id, "successful")
-            else raffleCacheDAO.updateStateById(raffle.id, "unsuccessful")
+            if (raffle.raised >= raffle.goal) raffleCacheDAO.updateStateById(raffle.id, "succeed")
+            else raffleCacheDAO.updateStateById(raffle.id, "failed")
           }
         }
       })

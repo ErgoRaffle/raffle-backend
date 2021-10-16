@@ -21,12 +21,12 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
   private val logger: Logger = Logger(this.getClass)
 
   def CreateRaffleProxyAddress(pk: String, charityPercent: Int, name: String, description: String, deadlineHeight: Long,
-                               charityAddr: String, goal: Long, ticketPrice: Long): String = {
+                               charityAddr: String, goal: Long, ticketPrice: Long): (String, Long) = {
     try {
       val paymentAddress = addresses.getRaffleCreateProxyContract(pk, charityPercent, name, description, deadlineHeight, charityAddr, goal, ticketPrice)
-      createReqDAO.insert(name, description, goal, deadlineHeight, charityPercent, charityAddr, ticketPrice, 0, pk, paymentAddress,
+      val req: CreateReq = createReqDAO.insert(name, description, goal, deadlineHeight, charityPercent, charityAddr, ticketPrice, 0, pk, paymentAddress,
         null, null, LocalDateTime.now().toString, Configs.creationDelay + utils.currentTime)
-      paymentAddress
+      (paymentAddress, req.id)
     }
     catch {
       case e: Throwable => {

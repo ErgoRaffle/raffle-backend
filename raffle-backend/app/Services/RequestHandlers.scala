@@ -37,19 +37,20 @@ class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO,
 
     try createReqUtils.independentMergeTxGeneration()
     catch {
-      case _:connectionException =>
+      case _: org.ergoplatform.appkit.ErgoClientException =>
+      case _: connectionException =>
       case e: Throwable => logger.error(utils.getStackTraceStr(e))
     }
   }
 
-  def handleRemoval(req: CreateReq): Unit = {
-    val unSpentPaymentBoxes = client.getAllUnspentBox(Address.create(req.paymentAddress))
+  def handleRemoval(req: CreateReq): Unit = try {
+    val unSpentPayment = client.getAllUnspentBox(Address.create(req.paymentAddress))
     logger.info("Trying to remove request " + req.id)
 
-    if (unSpentPaymentBoxes.nonEmpty) {
+    if (unSpentPayment.nonEmpty) {
       try {
         val unSpentPaymentBoxes = client.getCoveringBoxesFor(Address.create(req.paymentAddress), Configs.infBoxVal)
-        if (unSpentPaymentBoxes.getCoveredAmount >= Configs.fee*4) {
+        if (unSpentPaymentBoxes.getCoveredAmount >= Configs.fee * 4) {
           logger.info(s"Request ${req.id} is going back to the request pool, creation fee is enough")
           createReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
           throw skipException()
@@ -65,6 +66,9 @@ class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO,
       logger.info(s"will remove request: ${req.id} with state: ${req.state}")
       createReqDAO.deleteById(req.id)
     }
+  } catch{
+    case _: org.ergoplatform.appkit.ErgoClientException =>
+    case e: Throwable => logger.error(utils.getStackTraceStr(e))
   }
 
   def handleReq(req: CreateReq, serviceBox: InputBox): InputBox = {

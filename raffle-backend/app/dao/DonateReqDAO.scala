@@ -49,10 +49,12 @@ class DonateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
    *
    */
   def insert(ticketCount:Long, ticketPrice: Long, raffleDeadline: Long , state: Int, paymentAddress: String,
-             raffleToken: String, signedDonateTx: Option[String], participantAddress: String, timeStamp: String, ttl: Long): Unit ={
-    val action = requests += DonateReq(1, ticketCount, ticketPrice, raffleDeadline, state, paymentAddress, raffleToken,
+             raffleToken: String, signedDonateTx: Option[String], participantAddress: String,
+             timeStamp: String, ttl: Long): DonateReq ={
+    val insertQuery = requests returning requests.map(_.id) into ((item, id) => item.copy(id = id))
+    val action = insertQuery += DonateReq(1, ticketCount, ticketPrice, raffleDeadline, state, paymentAddress, raffleToken,
       signedDonateTx, participantAddress, timeStamp, ttl, false)
-    Await.result(db.run(action).map(_ => ()), Duration.Inf)
+    Await.result(db.run(action), Duration.Inf)
   }
 
   /**
@@ -65,7 +67,7 @@ class DonateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
    * @param id request id
    * @return request associated with the id
    */
-  def byId(id: Long): DonateReq = Await.result(db.run(requests.filter(req => req.id === id).filter(_.deleted === false).result.head), Duration.Inf)
+  def byId(id: Long): DonateReq = Await.result(db.run(requests.filter(req => req.id === id).result.head), Duration.Inf)
 
   /**
    * deletes by id

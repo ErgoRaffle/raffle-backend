@@ -56,10 +56,11 @@ class CreateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
    */
   def insert(name: String, description: String, goal: Long, deadlineHeight: Long, charityPercent: Int,
              charityAddr: String, ticketPrice: Long, state: Int, walletAddress: String, paymentAddress: String,
-             createTxId: Option[String],  mergeTxId: Option[String], timeStamp: String, ttl: Long): Future[Unit] ={
-    val action = requests += CreateReq(1, name, description, goal, deadlineHeight, charityPercent, charityAddr,
-      ticketPrice, state, walletAddress, paymentAddress, createTxId, mergeTxId, timeStamp, ttl, false)
-    db.run(action.asTry).map( _ => ())
+             createTxId: Option[String],  mergeTxId: Option[String], timeStamp: String, ttl: Long): CreateReq ={
+    val insertQuery = requests returning requests.map(_.id) into ((item, id) => item.copy(id = id))
+    val action = insertQuery += CreateReq(1, name, description, goal, deadlineHeight, charityPercent, charityAddr,
+      ticketPrice, state, walletAddress, paymentAddress, createTxId, mergeTxId, timeStamp, ttl, deleted = false)
+    Await.result(db.run(action), Duration.Inf)
   }
 
   /**
@@ -72,7 +73,7 @@ class CreateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
    * @param id request id
    * @return request associated with the id
    */
-  def byId(id: Long): CreateReq = Await.result(db.run(requests.filter(_.deleted === false).filter(req => req.id === id).result.head), Duration.Inf)
+  def byId(id: Long): CreateReq = Await.result(db.run(requests.filter(req => req.id === id).result.head), Duration.Inf)
 
   /**
    * deletes by id
