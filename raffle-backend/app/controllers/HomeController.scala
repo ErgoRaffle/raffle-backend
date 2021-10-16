@@ -87,13 +87,14 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       val name: String = request.body.hcursor.downField("name").as[String].getOrElse(throw new Throwable("name field must exist"))
       val description: String = request.body.hcursor.downField("description").as[String].getOrElse(throw new Throwable("description field must exist"))
       val goal: Long = request.body.hcursor.downField("goal").as[Long].getOrElse(throw new Throwable("minToRaise field must exist"))
-      val deadlineHeight: Long = request.body.hcursor.downField("deadlineHeight").as[Long].getOrElse(throw new Throwable("deadlineHeight field must exist"))
+      val deadlineHeight: Long = request.body.hcursor.downField("deadline").as[Long].getOrElse(throw new Throwable("deadlineHeight field must exist"))
       val charityPercent: Int = request.body.hcursor.downField("charityPercent").as[Int].getOrElse(throw new Throwable("charityPercent field must exist"))
-      val charityAddr: String = request.body.hcursor.downField("charityAddr").as[String].getOrElse(throw new Throwable("charityAddr field must exist"))
-      val walletAddr: String = request.body.hcursor.downField("walletAddr").as[String].getOrElse(throw new Throwable("charityAddr field must exist"))
+      val charityAddr: String = request.body.hcursor.downField("charity").as[String].getOrElse(throw new Throwable("charityAddr field must exist"))
+      val walletAddr: String = request.body.hcursor.downField("wallet").as[String].getOrElse(throw new Throwable("charityAddr field must exist"))
       val ticketPrice: Long = request.body.hcursor.downField("ticketPrice").as[Long].getOrElse(throw new Throwable("charityAddr field must exist"))
-      val captcha: String = request.body.hcursor.downField("captcha").as[String].getOrElse("")
+      val captcha: String = request.body.hcursor.downField("recaptcha").as[String].getOrElse("")
       if(Configs.recaptchaKey != "not-set") utils.verifyRecaptcha(captcha)
+      // TODO: Add pictures
 
       if(name.length > 250) throw new Throwable("Name size limit is 250 characters")
       if(description.length > 1000) throw new Throwable("Description size limit is 250 characters")
@@ -107,14 +108,17 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       val servicePercent = serviceBox.getRegisters.get(0).getValue.asInstanceOf[Long]
       utils.validateCharityPercent(charityPercent, servicePercent)
 
-      val paymentAddress = createReqUtils.CreateRaffleProxyAddress(walletAddr, charityPercent, name, description, deadlineHeight + client.getHeight, charityAddr, goal, ticketPrice)
+      val createResult = createReqUtils.CreateRaffleProxyAddress(walletAddr, charityPercent, name, description, deadlineHeight + client.getHeight, charityAddr, goal, ticketPrice)
+      val paymentAddress = createResult._1
+      val requestId = createResult._2
       val amount = Configs.fee * 4
       val delay = Configs.creationDelay
 
       val result = Json.fromFields(List(
         ("deadline", Json.fromLong(delay)),
         ("address", Json.fromString(paymentAddress)),
-        ("fee", Json.fromLong(amount))
+        ("erg", Json.fromLong(amount)),
+        ("requestId", Json.fromLong(requestId))
       ))
       Ok(result.toString()).as("application/json")
     } catch {

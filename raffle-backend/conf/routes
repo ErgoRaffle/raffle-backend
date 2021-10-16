@@ -5,7 +5,7 @@ GET     /                                            controllers.HomeController.
 GET     /api/info                                    controllers.HomeController.info
 GET     /api/raffle                                  controllers.HomeController.getRaffles(sorting: String ?= "activity", status: String ?= "all", offset: Int ?= 0, limit: Int ?= 100)
 GET     /api/raffle/:tokenId                         controllers.HomeController.getRafflesByTokenId(tokenId: String)
-POST    /api/raffle/add                              controllers.HomeController.addRaffle
+POST    /api/raffle                                  controllers.HomeController.addRaffle
 POST    /api/raffle/donate                           controllers.HomeController.donateToId
 POST    /api/tickets                                 controllers.HomeController.getTickets()
 GET     /api/explorer                                controllers.HomeController.getExplorer()
