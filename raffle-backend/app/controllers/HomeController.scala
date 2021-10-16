@@ -10,6 +10,7 @@ import play.api.Logger
 import play.api.libs.circe.Circe
 import play.api.mvc._
 import javax.inject._
+import models.{CreateReq, DonateReq}
 
 
 @Singleton
@@ -60,11 +61,9 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     }
   }
 
-  def getTickets(): Action[Json] = Action(circe.json) { implicit request =>
+  def getTickets(tokenId: String, walletAddr: String): Action[Json] = Action(circe.json) { implicit request =>
     try{
-      val walletAddr: String = request.body.hcursor.downField("walletAddr").as[String].getOrElse(throw new Throwable("wallet address must exist"))
-      val raffleId: String = request.body.hcursor.downField("raffleId").as[String].getOrElse(throw new Throwable("raffleId must exist"))
-      val result = raffleUtils.userTickets(raffleId, walletAddr)
+      val result = raffleUtils.userTickets(tokenId, walletAddr)
       Ok(result.toString()).as("application/json")
     }
     catch {
@@ -128,7 +127,12 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
 
   def createReqStatus(id: Long) = Action { implicit request: Request[AnyContent] =>
     try {
-      val req = createReqDAO.byId(id)
+      var req: CreateReq = null
+      try {
+        req = createReqDAO.byId(id)
+      } catch{
+        case _:Throwable => throw new Throwable("No request found with this id")
+      }
       val state: String = {
         if(req.state == 0 && !req.deleted) "waiting"
         else if(req.state == 1 && !req.deleted) "createdWaiting"
@@ -138,13 +142,18 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       val result = Json.fromFields(List(("status", Json.fromString(state))))
       Ok(result.toString()).as("application/json")
     } catch{
-      case _:Throwable => throw new Throwable("No request found with this id")
+      case e:Throwable => exception(e)
     }
   }
 
   def donateReqStatus(id: Long): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
-      val req = donateReqDAO.byId(id)
+      var req: DonateReq = null
+      try {
+        req = donateReqDAO.byId(id)
+      } catch{
+        case _:Throwable => throw new Throwable("No request found with this id")
+      }
       val state: String = {
         if(req.state == 0 && !req.deleted) "waiting"
         else if(req.state == 1 && !req.deleted) "createdWaiting"
@@ -154,16 +163,16 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       val result = Json.fromFields(List(("status", Json.fromString(state))))
       Ok(result.toString()).as("application/json")
     } catch{
-      case _:Throwable => throw new Throwable("No request found with this id")
+      case e:Throwable => exception(e)
     }
   }
 
 
   def donateToId(tokenId: String): Action[Json] = Action(circe.json) { implicit request =>
     try {
-      val walletAddr: String = request.body.hcursor.downField("walletAddr").as[String].getOrElse(throw new Throwable("walletAddr field must exist"))
+      val walletAddr: String = request.body.hcursor.downField("wallet").as[String].getOrElse(throw new Throwable("walletAddr field must exist"))
       val ticketCounts: Long = request.body.hcursor.downField("ticketCounts").as[Long].getOrElse(throw new Throwable("erg field must exist"))
-      val captcha: String = request.body.hcursor.downField("captcha").as[String].getOrElse("")
+      val captcha: String = request.body.hcursor.downField("recaptcha").as[String].getOrElse("")
       if(Configs.recaptchaKey != "not-set") utils.verifyRecaptcha(captcha)
 
       utils.validateAddress(walletAddr, "wallet")
@@ -192,7 +201,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       val result = raffleUtils.raffleTxsByTokenId(tokenId, offset, Math.min(limit, 100))
       Ok(result.toString()).as("application/json")
     } catch{
-      case _: Throwable => throw new Throwable("This raffle doesn't exist or not finished yet, no transaction found")
+      case e: Throwable => exception(e)
     }
   }
 

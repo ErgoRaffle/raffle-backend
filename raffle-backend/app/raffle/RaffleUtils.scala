@@ -7,7 +7,7 @@ import helpers.{Configs, Utils, connectionException, explorerException, failedTx
 import io.circe.Json
 import io.circe.parser.parse
 import javax.inject.Inject
-import models.Raffle
+import models.{Raffle, Ticket}
 import network.{Client, Explorer}
 import org.ergoplatform.appkit.impl.ErgoTreeContract
 import org.ergoplatform.appkit.{Address, ErgoToken, ErgoValue, InputBox}
@@ -73,22 +73,16 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
         val tickets: Seq[Json] = response.hcursor.downField("items").as[Seq[Json]].getOrElse(throw parseException())
           .filter(_.hcursor.downField("assets").as[List[Json]].getOrElse(null).size == 1)
         total = response.hcursor.downField("total").as[Int].getOrElse(0)
-        for (ticket <- tickets) {
-          val registers = ticket.hcursor.downField("additionalRegisters").as[Json].getOrElse(null)
-          val participantAddressByte: Array[Byte] = ErgoValue.fromHex(registers.hcursor.downField("R4").as[Json].getOrElse(null)
-            .hcursor.downField("serializedValue").as[String].getOrElse(""))
-            .getValue.asInstanceOf[Coll[Byte]].toArray
-          val participantAddress = Configs.addressEncoder.fromProposition(ErgoTreeSerializer.DefaultSerializer
-            .deserializeErgoTree(participantAddressByte)).get.toString
-          if (participantAddress == wallerAdd) {
-            val txId = ticket.hcursor.downField("transactionId").as[String].getOrElse("")
-            val count: Long = ticket.hcursor.downField("assets").as[List[Json]].getOrElse(null).head
-              .hcursor.downField("amount").as[Long].getOrElse(0)
+        for (ticketBox <- tickets) {
+          val ticket = Ticket(ticketBox)
+          val link = Configs.explorerFront + "en/transactions/" + ticket.txId
+          if (ticket.walletAddress == wallerAdd) {
             selectedTickets += Json.fromFields(List(
-              ("txId", Json.fromString(txId)),
-              ("count", Json.fromLong(count))
+              ("id", Json.fromString(ticket.txId)),
+              ("tickets", Json.fromLong(ticket.tokenCount)),
+              ("link", Json.fromString(link))
             ))
-            totalTickets += count
+            totalTickets += ticket.tokenCount
             totalRecords += 1
           }
         }
@@ -167,27 +161,31 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
   }
 
   def raffleTxsByTokenId(tokenId: String, offset: Int, limit: Int): Json ={
-    var transactions: ListBuffer[Json] = ListBuffer()
-    var txCount: Int = 0
-    val txs = txCacheDAO.byTokenId(tokenId)
-    val end = Math.min(txs.size, offset+limit)
+    try {
+      var transactions: ListBuffer[Json] = ListBuffer()
+      var txCount: Int = 0
+      val txs = txCacheDAO.byTokenId(tokenId)
+      val end = Math.min(txs.size, offset + limit)
 
-    for(i <- offset until end) {
-      val tx = txs(i)
-      txCount += 1
-      val link = Configs.explorerFront + "en/transactions/" + tx.txId
-      transactions += Json.fromFields(List(
-        ("id", Json.fromString(tx.txId)),
-        ("address", Json.fromString(tx.wallerAdd)),
-        ("type", Json.fromString(tx.txType)),
-        ("tickets", Json.fromLong(tx.tokenCount)),
-        ("link", Json.fromString(link))
+      for (i <- offset until end) {
+        val tx = txs(i)
+        txCount += 1
+        val link = Configs.explorerFront + "en/transactions/" + tx.txId
+        transactions += Json.fromFields(List(
+          ("id", Json.fromString(tx.txId)),
+          ("address", Json.fromString(tx.wallerAdd)),
+          ("type", Json.fromString(tx.txType)),
+          ("tickets", Json.fromLong(tx.tokenCount)),
+          ("link", Json.fromString(link))
+        ))
+      }
+      Json.fromFields(List(
+        ("items", Json.fromValues(transactions.toList)),
+        ("total", Json.fromInt(txCount))
       ))
+    } catch {
+      case _: Throwable => throw new Throwable("This raffle doesn't exist or not finished yet, no transaction found")
     }
-    Json.fromFields(List(
-      ("items", Json.fromValues(transactions.toList)),
-      ("total", Json.fromInt(txCount))
-    ))
   }
 
   def refundBoxes(boxes: List[InputBox], address: Address): String = {
