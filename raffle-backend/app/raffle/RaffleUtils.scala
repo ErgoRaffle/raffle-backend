@@ -1,6 +1,5 @@
 package raffle
 
-import java.nio.charset.StandardCharsets
 
 import dao.{RaffleCacheDAO, TxCacheDAO}
 import helpers.{Configs, Utils, connectionException, explorerException, failedTxException, internalException, parseException}
@@ -12,8 +11,6 @@ import network.{Client, Explorer}
 import org.ergoplatform.appkit.impl.ErgoTreeContract
 import org.ergoplatform.appkit.{Address, ErgoToken, ErgoValue, InputBox}
 import play.api.Logger
-import sigmastate.serialization.ErgoTreeSerializer
-import special.collection.Coll
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable.{ListBuffer, Seq}
@@ -44,7 +41,8 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
           ("deadline", Json.fromLong(raffle.deadlineHeight)),
           ("picture", parse(raffle.picLinks).getOrElse(Json.fromValues(List[Json]()))),
           ("erg", Json.fromLong(raffle.raised)),
-          ("goal", Json.fromLong(raffle.goal))
+          ("goal", Json.fromLong(raffle.goal)),
+          ("status", Json.fromString(raffle.state))
         ))
       }
 
@@ -121,7 +119,6 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
       }
 
       val raffle = Raffle(raffleBox)
-      val participants = utils.raffleParticipants(tokenId)
       val savedRaffle = raffleCacheDAO.byTokenId(tokenId)
       raffleCacheUtils.updateRaffle(savedRaffle, raffleBox)
 
@@ -130,11 +127,12 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
         ("name", Json.fromString(raffle.name)),
         ("description", Json.fromString(raffle.description)),
         ("deadline", Json.fromLong(raffle.deadlineHeight)),
+        ("goal", Json.fromLong(raffle.goal)),
         ("picture", parse(raffle.picLinks).getOrElse(Json.fromValues(List[Json]()))),
         ("charity", Json.fromString(raffle.charityAddr)),
         ("percent", Json.fromFields(List(
           ("charity", Json.fromLong(raffle.charityPercent)),
-          ("winner", Json.fromLong(raffle.charityPercent)),
+          ("winner", Json.fromLong(raffle.winnerPercent)),
           ("service", Json.fromLong(raffle.serviceFee))
         ))),
         ("ticket", Json.fromFields(List(
@@ -142,7 +140,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
           ("sold", Json.fromLong(raffle.tickets)),
           ("erg", Json.fromLong(raffle.raised))
         ))),
-        ("donatedPeople", Json.fromLong(participants)),
+        ("donatedPeople", Json.fromLong(savedRaffle.participants)),
         ("status", Json.fromString(savedRaffle.state)),
         ("txFee", Json.fromLong(Configs.fee))
       ))

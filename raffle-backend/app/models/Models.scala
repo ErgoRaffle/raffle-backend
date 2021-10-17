@@ -31,7 +31,7 @@ case class RaffleCache(id: Long, name: String, description: String, goal: Long, 
 case class TxCache(id: Long, txId: String, tokenId: String, tokenCount: Long, txType: String, wallerAdd: String)
 
 case class Raffle(name: String, description: String, goal: Long, raised: Long, deadlineHeight: Long,
-                  serviceFee: Int, charityPercent: Int, charityAddr: String, ticketPrice: Long,
+                  serviceFee: Int, charityPercent: Int, charityAddr: String, winnerPercent: Int, ticketPrice: Long,
                   tickets: Long, picLinks: String, tokenId: String)
 
 object Raffle{
@@ -45,6 +45,7 @@ object Raffle{
         .getValue.asInstanceOf[Coll[Long]].toArray
       val charityPercent = R4(0)
       val serviceFee = R4(1)
+      val winnerPercent = 100 - charityPercent - serviceFee
       val ticketPrice = R4(2)
       val goal = R4(3)
       val deadlineHeight = R4(4)
@@ -65,7 +66,7 @@ object Raffle{
       val picLinks = "[]"
 
       new Raffle(name, description, goal, totalRaised, deadlineHeight, serviceFee.toInt, charityPercent.toInt,
-        charityAddress, ticketPrice, totalSoldTicket, picLinks, tokenId)
+        charityAddress, winnerPercent.toInt, ticketPrice, totalSoldTicket, picLinks, tokenId)
     }
     catch{
       case _: Throwable => throw new parseException
