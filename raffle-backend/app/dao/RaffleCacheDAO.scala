@@ -109,10 +109,12 @@ class RaffleCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
     db.run(updateAction)
   }
 
-  def updateRaised(id: Long, raised: Long, tickets: Long, participants: Long, lastActivity: Long): Unit ={
+  def updateRaised(id: Long, raised: Long, tickets: Long): Unit =
+    db.run(raffles.filter(_.id === id).map(ra => (ra.raised, ra.tickets)).update((raised, tickets)))
+
+  def updateActivity(id: Long, raised: Long, tickets: Long, participants: Long, lastActivity: Long): Unit =
     db.run(raffles.filter(_.id === id).map(ra => (ra.raised, ra.tickets, ra.participants, ra.lastActivity))
       .update((raised, tickets, participants, lastActivity)))
-  }
 
   def updateRedeemed(id: Long, redeemed: Long): Unit =
     db.run(raffles.filter(_.id === id).map(ra => ra.redeemedTickets).update(redeemed))

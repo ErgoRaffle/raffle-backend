@@ -287,4 +287,17 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
       case e: Throwable => throw e
     }
   }
+
+  def getTicketBoxes(tokenId: String, offset: Int): Seq[ciJson] ={
+    try {
+      explorer.getAllTokenBoxes(tokenId, offset, 100)
+        .hcursor.downField("items").as[Seq[ciJson]].getOrElse(null)
+        .filter(_.hcursor.downField("assets").as[Seq[ciJson]].getOrElse(null).size == 1)
+    } catch{
+      case _: Throwable => throw new parseException
+    }
+  }
+
+  def getTransactionFrontLink(txId: String): String = Configs.explorerFront + "/en/transactions/" + txId
+
 }
