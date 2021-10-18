@@ -1,9 +1,10 @@
 package controllers
 
-import dao.{CreateReqDAO, DonateReqDAO}
+import dao.{CreateReqDAO, DonateReqDAO, RaffleCacheDAO}
 import helpers.{Configs, Utils}
 import io.circe.Json
 import io.circe.generic.codec.DerivedAsObjectCodec.deriveCodec
+import io.circe.parser
 import network.{Client, Explorer}
 import raffle.{Addresses, CreateReqUtils, DonateReqUtils, RaffleUtils}
 import play.api.Logger
@@ -16,7 +17,7 @@ import models.{CreateReq, DonateReq}
 @Singleton
 class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: Explorer, donateReqUtils: DonateReqUtils,
                                client: Client, createReqUtils: CreateReqUtils, raffleUtils: RaffleUtils, utils: Utils,
-                               createReqDAO: CreateReqDAO, donateReqDAO: DonateReqDAO,
+                               createReqDAO: CreateReqDAO, donateReqDAO: DonateReqDAO, raffleCacheDAO: RaffleCacheDAO,
                                val controllerComponents: ControllerComponents) extends BaseController
   with Circe {
   private val logger: Logger = Logger(this.getClass)
@@ -53,15 +54,42 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
   def getRafflesByTokenId(tokenId: String): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
       logger.info("Responding get raffle request by token id: "+ tokenId)
-      val result = raffleUtils.raffleByTokenId(tokenId)
-      Ok(result.toString()).as("application/json")
+      val savedRaffle = raffleCacheDAO.byTokenId(tokenId)
+      if(savedRaffle.state == "active") {
+        val result = raffleUtils.raffleByTokenId(tokenId)
+        Ok(result.toString()).as("application/json")
+      } else {
+        val result = Json.fromFields(List(
+          ("id", Json.fromString(savedRaffle.tokenId)),
+          ("name", Json.fromString(savedRaffle.name)),
+          ("description", Json.fromString(savedRaffle.description)),
+          ("deadline", Json.fromLong(savedRaffle.deadlineHeight)),
+          ("goal", Json.fromLong(savedRaffle.goal)),
+          ("picture", parser.parse(savedRaffle.picLinks).getOrElse(Json.fromValues(List[Json]()))),
+          ("charity", Json.fromString(savedRaffle.charityAddr)),
+          ("percent", Json.fromFields(List(
+            ("charity", Json.fromLong(savedRaffle.charityPercent)),
+            ("winner", Json.fromLong(100 - savedRaffle.charityPercent - savedRaffle.serviceFee)),
+            ("service", Json.fromLong(savedRaffle.serviceFee))
+          ))),
+          ("ticket", Json.fromFields(List(
+            ("price", Json.fromLong(savedRaffle.ticketPrice)),
+            ("sold", Json.fromLong(savedRaffle.tickets)),
+            ("erg", Json.fromLong(savedRaffle.raised))
+          ))),
+          ("donatedPeople", Json.fromLong(savedRaffle.participants)),
+          ("status", Json.fromString(savedRaffle.state)),
+          ("txFee", Json.fromLong(Configs.fee))
+        ))
+        Ok(result.toString()).as("application/json")
+      }
     }
     catch {
       case e: Throwable => exception(e)
     }
   }
 
-  def getTickets(tokenId: String, walletAddr: String): Action[Json] = Action(circe.json) { implicit request =>
+  def getTickets(tokenId: String, walletAddr: String): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try{
       val result = raffleUtils.userTickets(tokenId, walletAddr)
       Ok(result.toString()).as("application/json")
@@ -247,11 +275,9 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     Ok(result.toString()).as("application/json")
   }
 
-  def getExplorer(): Action[AnyContent] = Action {
-    val explorer = Configs.explorerFront
-
+  def support(): Action[AnyContent] = Action {
     val result = Json.fromFields(List(
-      ("explorerUrl", Json.fromString(explorer))
+      ("state", Json.fromString("success"))
     ))
     Ok(result.toString()).as("application/json")
   }

@@ -42,7 +42,8 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
           ("picture", parse(raffle.picLinks).getOrElse(Json.fromValues(List[Json]()))),
           ("erg", Json.fromLong(raffle.raised)),
           ("goal", Json.fromLong(raffle.goal)),
-          ("status", Json.fromString(raffle.state))
+          ("status", Json.fromString(raffle.state)),
+          ("donatedPeople", Json.fromLong(raffle.participants))
         ))
       }
 
@@ -73,12 +74,11 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
         total = response.hcursor.downField("total").as[Int].getOrElse(0)
         for (ticketBox <- tickets) {
           val ticket = Ticket(ticketBox)
-          val link = Configs.explorerFront + "en/transactions/" + ticket.txId
           if (ticket.walletAddress == wallerAdd) {
             selectedTickets += Json.fromFields(List(
               ("id", Json.fromString(ticket.txId)),
               ("tickets", Json.fromLong(ticket.tokenCount)),
-              ("link", Json.fromString(link))
+              ("link", Json.fromString(utils.getTransactionFrontLink(ticket.txId)))
             ))
             totalTickets += ticket.tokenCount
             totalRecords += 1
@@ -120,7 +120,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
 
       val raffle = Raffle(raffleBox)
       val savedRaffle = raffleCacheDAO.byTokenId(tokenId)
-      raffleCacheUtils.updateRaffle(savedRaffle, raffleBox)
+      raffleCacheDAO.updateRaised(savedRaffle.id, raffle.raised, raffle.tickets)
 
       Json.fromFields(List(
         ("id", Json.fromString(raffle.tokenId)),
@@ -168,13 +168,12 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
       for (i <- offset until end) {
         val tx = txs(i)
         txCount += 1
-        val link = Configs.explorerFront + "en/transactions/" + tx.txId
         transactions += Json.fromFields(List(
           ("id", Json.fromString(tx.txId)),
           ("address", Json.fromString(tx.wallerAdd)),
           ("type", Json.fromString(tx.txType)),
           ("tickets", Json.fromLong(tx.tokenCount)),
-          ("link", Json.fromString(link))
+          ("link", Json.fromString(utils.getTransactionFrontLink(tx.txId)))
         ))
       }
       Json.fromFields(List(
@@ -190,9 +189,8 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
     try {
       var donations: ListBuffer[Json] = ListBuffer()
       var totalRecords: Long = 0
-      val tickets: List[(String, Long)] = explorer.getTicketsByWallet(addresses.getTicketContract().getErgoTree, walletAdd)
-        .hcursor.downField("items").as[Seq[Json]].getOrElse(null).map(t => Ticket(t)).map(t => (t.tokenId, t.tokenCount))
-        .groupBy(_._1).mapValues(seq => seq.reduce{(x,y) => (x._1, x._2 + y._2)}._2).toList
+      val tickets: List[(String, Long)] = txCacheDAO.byWalletAdd(walletAdd).map(t => (t.tokenId, t.tokenCount))
+        .groupBy(_._1).mapValues(seq => seq.map(_._2).sum).toList
       val end = Math.min(tickets.size, offset + limit)
 
       for (i <- offset until end) {
@@ -238,7 +236,6 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
       for (i <- offset until end) {
         val ticket = tickets(i)
         val raffle = raffleCacheDAO.byTokenId(ticket.tokenId)
-        val link = Configs.explorerFront + "en/transactions/" + ticket.txId
         wins += Json.fromFields(List(
           ("id", Json.fromString(raffle.tokenId)),
           ("name", Json.fromString(raffle.name)),
@@ -248,7 +245,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
           ("erg", Json.fromLong(raffle.raised)),
           ("goal", Json.fromLong(raffle.goal)),
           ("tickets", Json.fromLong(ticket.tokenCount)),
-          ("link", Json.fromString(link))
+          ("link", Json.fromString(utils.getTransactionFrontLink(ticket.txId)))
         ))
         totalRecords += 1
       }

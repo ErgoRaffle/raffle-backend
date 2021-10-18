@@ -32,6 +32,8 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
       val lastActivity: Long = raffleBox.hcursor.downField("settlementHeight").as[Long].getOrElse(0)
       raffleCacheDAO.updateActivity(savedRaffle.id, raffle.raised, raffle.tickets, participants, lastActivity)
       activeRaffleTxUpdate(raffle.tokenId)
+      if(client.getHeight > raffle.deadlineHeight && raffle.raised >= raffle.goal)
+        raffleCacheDAO.updateStateById(savedRaffle.id, "succeed")
     }
     if (state == "failed" && savedRaffle.tickets - savedRaffle.redeemedTickets != raffle.tickets) {
       UnsuccessfulRaffleTxUpdate(raffle.tokenId)
