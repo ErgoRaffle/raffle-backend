@@ -2,16 +2,18 @@ package Services
 
 import akka.actor.{Actor, ActorLogging}
 import play.api.Logger
+import raffle.RaffleCacheUtils
 
 object JobsUtil {
   val create = "create"
   val donate = "donate"
   val refund = "refund"
   val update = "update"
+  val initialize = "initialize"
 }
 
 class Jobs(createReqHandler: CreateReqHandler, donateReqHandler: DonateReqHandler, refundReqHandler: RefundReqHandler,
-           raffleUpdateHandler: RaffleUpdateHandler)
+           raffleCacheUtils: RaffleCacheUtils)
   extends Actor with ActorLogging {
   private val logger: Logger = Logger(this.getClass)
 
@@ -30,7 +32,11 @@ class Jobs(createReqHandler: CreateReqHandler, donateReqHandler: DonateReqHandle
 
     case JobsUtil.update =>
       logger.info("updating raffles information")
-      raffleUpdateHandler.handleReqs()
+      raffleCacheUtils.raffleSearch()
+
+    case JobsUtil.initialize =>
+      logger.info("Initializing database")
+      raffleCacheUtils.raffleInitialSearch()
   }
 
 }

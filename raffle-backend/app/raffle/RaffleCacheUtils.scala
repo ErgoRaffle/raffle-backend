@@ -157,4 +157,53 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
       }
     })
   }
+
+  def raffleInitialSearch(): Unit ={
+    logger.debug("Updating Raffle cache started")
+    try {
+      var raffleList: List[Raffle] = List()
+      var offset: Int = 0
+      var items: List[Json] = null
+      do {
+        val response = explorer.getAllTokenBoxes(Configs.token.service, offset, 100)
+        offset += 100
+        try {
+          items = response.hcursor.downField("items").as[List[Json]].getOrElse(throw new parseException)
+            .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).size > 1)
+            .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).head
+              .hcursor.downField("tokenId").as[String].getOrElse("") == Configs.token.service)
+          raffleList = raffleList ::: items.map(item => Raffle(item))
+        } catch {
+          case _: parseException =>
+          case e: Throwable => logger.error(utils.getStackTraceStr(e))
+        }
+      } while (items != null && items.nonEmpty)
+      val maxParticipation: Map[String, (Long, Long)] = raffleList.map(r => (r.tokenId, r.raised, r.tickets))
+        .groupBy(_._1).mapValues(seq => (seq.map(_._2).max, seq.map(_._3).max))
+
+      var raffleIdList: List[String] = try{
+        raffleCacheDAO.all.map(_.tokenId).toList
+      } catch {
+        case _: Throwable => List[String]()
+      }
+
+      logger.info(s"Found ${raffleList.size} raffle boxes belonging to ${maxParticipation.size} number of raffles")
+      raffleList.foreach(raffle => {
+          if(!raffleIdList.contains(raffle.tokenId)) {
+            println("New raffle found with Token Id: " + raffle.tokenId)
+            // TODO change the creationTime
+            val participants: Long = utils.raffleParticipants(raffle.tokenId)
+            raffleCacheDAO.initialInsert(raffle, participants, 0,0,
+              maxParticipation(raffle.tokenId)._1, maxParticipation(raffle.tokenId)._2)
+            raffleIdList = raffleIdList :+ raffle.tokenId
+          }
+      })
+
+    } catch{
+      case e: connectionException => logger.info(e.getMessage)
+      case _: parseException =>
+      case e: Throwable => logger.error(utils.getStackTraceStr(e))
+    }
+    logger.info("Updating raffle cache finished")
+  }
 }

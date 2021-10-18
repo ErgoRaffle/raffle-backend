@@ -5,6 +5,7 @@ import network.Client
 import play.api.Logger
 import javax.inject.{Inject, Singleton}
 import helpers.Configs
+import raffle.RaffleCacheUtils
 
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
@@ -12,7 +13,8 @@ import scala.concurrent.duration._
 @Singleton
 class StartupService @Inject()(node: Client, system: ActorSystem, createReqHandler: CreateReqHandler,
                                donateReqHandler: DonateReqHandler, refundReqHandler: RefundReqHandler,
-                               raffleUpdateHandler: RaffleUpdateHandler) (implicit ec: ExecutionContext) {
+                               raffleCacheUtils: RaffleCacheUtils)
+                              (implicit ec: ExecutionContext) {
 
   private val logger: Logger = Logger(this.getClass)
 
@@ -20,7 +22,7 @@ class StartupService @Inject()(node: Client, system: ActorSystem, createReqHandl
   node.setClient()
 
   val jobs: ActorRef = system.actorOf(Props(new Jobs(createReqHandler, donateReqHandler,
-    refundReqHandler, raffleUpdateHandler)), "scheduler")
+    refundReqHandler, raffleCacheUtils)), "scheduler")
 
   system.scheduler.scheduleAtFixedRate(
     initialDelay = 2.seconds,
@@ -37,10 +39,16 @@ class StartupService @Inject()(node: Client, system: ActorSystem, createReqHandl
   )
 
   system.scheduler.scheduleAtFixedRate(
-    initialDelay = 2.seconds,
+    initialDelay = 20.seconds,
     interval = Configs.updateThreadInterval.seconds,
     receiver = jobs,
     message = JobsUtil.update
+  )
+
+  system.scheduler.scheduleOnce(
+    delay = 1.seconds,
+    receiver = jobs,
+    message = JobsUtil.initialize
   )
 
   if(Configs.activeFinalize) {

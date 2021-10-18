@@ -208,16 +208,3 @@ class RefundReqHandler@Inject ()(client: Client, utils: Utils, refundReqUtils: F
   }
 }
 
-class RaffleUpdateHandler@Inject ()(client: Client, utils: Utils, raffleCacheUtils: RaffleCacheUtils){
-  private val logger: Logger = Logger(this.getClass)
-
-  def handleReqs(): Unit = {
-    try {
-      raffleCacheUtils.raffleSearch()
-    } catch {
-      case e: ErgoClientException => logger.warn(e.getMessage)
-      case e: Throwable => logger.error(utils.getStackTraceStr(e))
-    }
-  }
-}
-

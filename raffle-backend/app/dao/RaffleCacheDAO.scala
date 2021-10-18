@@ -74,6 +74,15 @@ class RaffleCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
     db.run(action).map(_ => ())
   }
 
+  def initialInsert(raffle: Raffle, participants: Long, creationTime: Long, lastActivity: Long,
+                    maxRaised: Long, maxTicket: Long): Future[Unit] ={
+    val action = raffles += RaffleCache(1, raffle.name, raffle.description, raffle.goal, maxRaised,
+      raffle.deadlineHeight, raffle.serviceFee, raffle.charityPercent, raffle.charityAddr, raffle.ticketPrice,
+      raffle.picLinks, maxTicket, participants, 0, "", raffle.tokenId, creationTime, lastActivity,
+      isUpdating = false, completed = false)
+    db.run(action).map(_ => ())
+  }
+
   /**
    * all raffles
    * @return list of CreateReq
