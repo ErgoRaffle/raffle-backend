@@ -18,6 +18,7 @@ class Explorer() {
   private val tx = s"$baseUrlV1/transactions"
   private val unconfirmedTx = s"$baseUrlV0/transactions/unconfirmed"
   private val unspentBoxesByTokenId = s"$baseUrlV1/boxes/unspent/byTokenId"
+  private val allBoxesByTokenId = s"$baseUrlV1/boxes/byTokenId"
   private val boxesP1 = s"$tx/boxes"
   private val mempoolTransactions = s"$baseUrlV1/mempool/transactions/byAddress"
   private val boxSearch = s"$baseUrlV1/boxes/search"
@@ -79,6 +80,12 @@ class Explorer() {
     Request.httpGet(s"$unspentBoxesByTokenId/$tokenId?offset=$offset&limit=$limit")
   } catch {
     case _: Throwable => Json.Null
+  }
+
+  def getAllTokenBoxes(tokenId: String, offset: Int, limit: Int): Json = try {
+    Request.httpGet(s"$allBoxesByTokenId/$tokenId?offset=$offset&limit=$limit")
+  } catch {
+    case e: Throwable => Json.Null
   }
 
   def getUnspentBoxByID(boxId: String): Json = try {

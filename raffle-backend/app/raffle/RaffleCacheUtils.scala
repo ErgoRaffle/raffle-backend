@@ -1,7 +1,5 @@
 package raffle
 
-import java.time.LocalDateTime
-
 import dao.{RaffleCacheDAO, TxCacheDAO}
 import helpers.{Configs, Utils, connectionException, noRaffleException, parseException}
 import javax.inject.Inject
@@ -9,6 +7,8 @@ import network.{Client, Explorer}
 import play.api.Logger
 import io.circe.Json
 import models.{Raffle, RaffleCache, Ticket}
+
+import scala.collection.mutable.Seq
 
 
 class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, addresses: Addresses,
@@ -30,7 +30,10 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
     if (state == "active" && raffle.tickets != savedRaffle.tickets) {
       val participants: Long = utils.raffleParticipants(raffle.tokenId)
       val lastActivity: Long = raffleBox.hcursor.downField("settlementHeight").as[Long].getOrElse(0)
-      raffleCacheDAO.updateRaised(savedRaffle.id, raffle.raised, raffle.tickets, participants, lastActivity)
+      raffleCacheDAO.updateActivity(savedRaffle.id, raffle.raised, raffle.tickets, participants, lastActivity)
+      activeRaffleTxUpdate(raffle.tokenId)
+      if(client.getHeight > raffle.deadlineHeight && raffle.raised >= raffle.goal)
+        raffleCacheDAO.updateStateById(savedRaffle.id, "succeed")
     }
     if (state == "failed" && savedRaffle.tickets - savedRaffle.redeemedTickets != raffle.tickets) {
       UnsuccessfulRaffleTxUpdate(raffle.tokenId)
@@ -120,41 +123,134 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
     logger.info("Updating raffles finished")
   }
 
-  def SuccessfulRaffleTxUpdate(tokenId: String): Unit ={
+  def activeRaffleTxUpdate(tokenId: String): Unit = try {
     // Tickets
-    val tickets = explorer.getBoxesByErgoTree(addresses.getTicketContract().getErgoTree, tokenId)
-        .hcursor.downField("items").as[Seq[Json]].getOrElse(null)
-    tickets.foreach(ticketBox =>{
-      val ticket = Ticket(ticketBox)
-      try{
-        txCacheDAO.byTxId(ticket.txId)
-      }
-      catch{
-        case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, "Ticket", ticket.walletAddress)
-      }
-      // Winner Reward
-      val spendTxId: String = ticketBox.hcursor.downField("spentTransactionId").as[String].getOrElse("")
-      if(spendTxId != "")
-        txCacheDAO.insert(spendTxId, tokenId, ticket.tokenCount, "Winner", ticket.walletAddress)
-    })
+    var offset = 0
+    var tickets = utils.getTicketBoxes(tokenId, offset)
+    while (tickets != null && tickets.nonEmpty) {
+      tickets.foreach(ticketBox => {
+        val ticket = Ticket(ticketBox)
+        try txCacheDAO.byTxId(ticket.txId)
+        catch {case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, "Ticket", ticket.walletAddress) }
+      })
+      offset += 100
+      tickets = utils.getTicketBoxes(tokenId, offset)
+    }
+  } catch{
+    case _:parseException =>
+    case e:Throwable => logger.error(utils.getStackTraceStr(e))
   }
 
-  def UnsuccessfulRaffleTxUpdate(tokenId: String): Unit ={
-    // Ticket Refund Txs
-    val tickets = explorer.getBoxesByErgoTree(addresses.getTicketContract().getErgoTree, tokenId)
-      .hcursor.downField("items").as[Seq[Json]].getOrElse(null)
-    tickets.foreach(ticketBox =>{
-      val ticket = Ticket(ticketBox)
-      try{
-        txCacheDAO.byTxId(ticket.txId)
-      }
-      catch{
-        case _: Throwable => {
+  def SuccessfulRaffleTxUpdate(tokenId: String): Unit = try {
+    // Tickets
+    var offset = 0
+    var tickets = utils.getTicketBoxes(tokenId, offset)
+    while (tickets != null && tickets.nonEmpty) {
+      tickets.foreach(ticketBox => {
+        try {
+          val ticket = Ticket(ticketBox)
+          try txCacheDAO.byTxId(ticket.txId)
+          catch {
+            case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, "Ticket", ticket.walletAddress)
+          }
+          // Winner Reward
           val spendTxId: String = ticketBox.hcursor.downField("spentTransactionId").as[String].getOrElse("")
-          if(spendTxId != "")
-            txCacheDAO.insert(spendTxId, tokenId, ticket.tokenCount, "Refund", ticket.walletAddress)
+          if (spendTxId != "")
+            txCacheDAO.insert(spendTxId, tokenId, ticket.tokenCount, "Winner", ticket.walletAddress)
+        } catch{
+          case _: org.ergoplatform.validation.ValidationException =>
+          case e: Throwable => logger.error(e.getMessage)
         }
+      })
+      offset += 100
+      tickets = utils.getTicketBoxes(tokenId, offset)
+    }
+  } catch{
+    case _:parseException =>
+    case e:Throwable => logger.error(utils.getStackTraceStr(e))
+  }
+
+  def UnsuccessfulRaffleTxUpdate(tokenId: String): Unit = try{
+    // Ticket Refund Txs
+    var offset = 0
+    var tickets = utils.getTicketBoxes(tokenId, offset)
+    while (tickets != null && tickets.nonEmpty) {
+      tickets.foreach(ticketBox => {
+        try {
+          val ticket = Ticket(ticketBox)
+          // Refund Tx
+          try txCacheDAO.refundByTxId(ticket.txId)
+          catch {
+            case _: Throwable => {
+              val spendTxId: String = ticketBox.hcursor.downField("spentTransactionId").as[String].getOrElse("")
+              if (spendTxId != "")
+                txCacheDAO.insert(spendTxId, tokenId, ticket.tokenCount, "Refund", ticket.walletAddress)
+            }
+          }
+          // Ticket Tx
+          try txCacheDAO.byTxId(ticket.txId)
+          catch {
+            case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, "Ticket", ticket.walletAddress)
+          }
+        } catch{
+          case _: org.ergoplatform.validation.ValidationException =>
+          case e: Throwable => logger.error(e.getMessage)
+        }
+      })
+      offset += 100
+      tickets = utils.getTicketBoxes(tokenId, offset)
+    }
+  } catch{
+    case _:parseException =>
+    case e:Throwable => logger.error(utils.getStackTraceStr(e))
+  }
+
+  def raffleInitialSearch(): Unit ={
+    logger.debug("Updating Raffle cache started")
+    try {
+      var raffleList: List[Raffle] = List()
+      var offset: Int = 0
+      var items: List[Json] = null
+      do {
+        val response = explorer.getAllTokenBoxes(Configs.token.service, offset, 100)
+        offset += 100
+        try {
+          items = response.hcursor.downField("items").as[List[Json]].getOrElse(throw new parseException)
+            .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).size > 1)
+            .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).head
+              .hcursor.downField("tokenId").as[String].getOrElse("") == Configs.token.service)
+          raffleList = raffleList ::: items.map(item => Raffle(item))
+        } catch {
+          case _: parseException =>
+          case e: Throwable => logger.error(utils.getStackTraceStr(e))
+        }
+      } while (items != null && items.nonEmpty)
+      val maxParticipation: Map[String, (Long, Long)] = raffleList.map(r => (r.tokenId, r.raised, r.tickets))
+        .groupBy(_._1).mapValues(seq => (seq.map(_._2).max, seq.map(_._3).max))
+
+      var raffleIdList: List[String] = try{
+        raffleCacheDAO.all.map(_.tokenId).toList
+      } catch {
+        case _: Throwable => List[String]()
       }
-    })
+
+      logger.info(s"Found ${raffleList.size} raffle boxes belonging to ${maxParticipation.size} number of raffles")
+      raffleList.foreach(raffle => {
+          if(!raffleIdList.contains(raffle.tokenId)) {
+            println("New raffle found with Token Id: " + raffle.tokenId)
+            // TODO change the creationTime
+            val participants: Long = utils.raffleParticipants(raffle.tokenId)
+            raffleCacheDAO.initialInsert(raffle, participants, 0,0,
+              maxParticipation(raffle.tokenId)._1, maxParticipation(raffle.tokenId)._2)
+            raffleIdList = raffleIdList :+ raffle.tokenId
+          }
+      })
+
+    } catch{
+      case e: connectionException => logger.info(e.getMessage)
+      case _: parseException =>
+      case e: Throwable => logger.error(utils.getStackTraceStr(e))
+    }
+    logger.info("Updating raffle cache finished")
   }
 }

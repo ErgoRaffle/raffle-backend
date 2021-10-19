@@ -269,22 +269,35 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
     try {
       var result = 0
       var offset = 0
-      var response = explorer.getUnspentTokenBoxes(tokenId, offset, 100)
+      var response = explorer.getAllTokenBoxes(tokenId, offset, 100)
       var items = response.hcursor.downField("items").as[List[ciJson]].getOrElse(null)
         .filter(_.hcursor.downField("assets").as[Seq[ciJson]].getOrElse(null).size == 1)
       Try {
         while (items != null && items.nonEmpty) {
           result += items.size
           offset += 100
-          response = explorer.getUnspentTokenBoxes(tokenId, offset, 100)
+          response = explorer.getAllTokenBoxes(tokenId, offset, 100)
           items = response.hcursor.downField("items").as[List[ciJson]].getOrElse(null)
             .filter(_.hcursor.downField("assets").as[Seq[ciJson]].getOrElse(null).size == 1)
         }
       }
-      result
+      result - 1
     } catch{
       case _: java.lang.NullPointerException => 0
       case e: Throwable => throw e
     }
   }
+
+  def getTicketBoxes(tokenId: String, offset: Int): Seq[ciJson] ={
+    try {
+      explorer.getAllTokenBoxes(tokenId, offset, 100)
+        .hcursor.downField("items").as[Seq[ciJson]].getOrElse(null)
+        .filter(_.hcursor.downField("assets").as[Seq[ciJson]].getOrElse(null).size == 1)
+    } catch{
+      case _: Throwable => throw new parseException
+    }
+  }
+
+  def getTransactionFrontLink(txId: String): String = Configs.explorerFront + "/en/transactions/" + txId
+
 }

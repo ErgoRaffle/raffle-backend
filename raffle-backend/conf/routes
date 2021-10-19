@@ -14,6 +14,7 @@ GET     /api/raffle/:tokenId/address/:add/donation   controllers.HomeController.
 GET     /api/wallet/:address/donation                controllers.HomeController.walletTickets(address: String, offset: Int ?= 0, limit: Int ?= 100)
 GET     /api/wallet/:address/win                     controllers.HomeController.walletWins(address: String, offset: Int ?= 0, limit: Int ?= 100)
 GET     /api/raffle_share                            controllers.HomeController.servicePercent()
+POST    /api/support                                 controllers.HomeController.support()
 GET     /*file                                       controllers.HomeController.assetOrDefault(file)
 
 # Map static resources from the /public folder to the /assets URL path
