@@ -160,9 +160,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
 
   def raffleTxsByTokenId(tokenId: String, offset: Int, limit: Int): Json ={
     try {
-      var transactions: ListBuffer[Json] = ListBuffer()
-      val txs = txCacheDAO.byTokenId(tokenId)
-      val end = Math.min(txs._2.size, offset + limit)
+      val txs = txCacheDAO.byTokenId(tokenId, offset, limit)
       var tmpTxs: scala.Seq[TxCache] = Seq.empty
       if (txs._1.nonEmpty) {
         // TODO: charityTx is a fake tx should be remove in production
@@ -171,19 +169,18 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
         else tmpTxs = txs._1.reverse :+ charityTx
       }
       tmpTxs ++= txs._2
-      for (i <- offset until end) {
-        val tx = tmpTxs(i)
-        transactions += Json.fromFields(List(
+      val transactions = tmpTxs.slice(offset, offset + limit).map(tx => {
+        Json.fromFields(List(
           ("id", Json.fromString(tx.txId)),
           ("address", Json.fromString(tx.wallerAdd)),
           ("type", Json.fromString(tx.txType)),
           ("tickets", Json.fromLong(tx.tokenCount)),
           ("link", Json.fromString(utils.getTransactionFrontLink(tx.txId)))
         ))
-      }
+      })
       Json.fromFields(List(
         ("items", Json.fromValues(transactions.toList)),
-        ("total", Json.fromInt(tmpTxs.length))
+        ("total", Json.fromInt(txs._3))
       ))
     } catch {
       case _: Throwable => throw new Throwable("This raffle doesn't exist or not finished yet, no transaction found")

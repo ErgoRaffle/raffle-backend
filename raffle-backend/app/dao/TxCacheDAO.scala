@@ -20,7 +20,7 @@ trait TxCacheComponent {
     def tokenCount = column[Long]("TOKEN_COUNT")
     def txType = column[String]("TYPE")
     def walletAdd = column[String]("WALLET_ADD")
-
+    def txToken = index("TX_TOKEN", (txId, tokenId), unique = true)
     def * = (id, txId, tokenId, tokenCount, txType, walletAdd) <> (TxCache.tupled, TxCache.unapply)
   }
 
@@ -57,13 +57,15 @@ class TxCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvide
    */
   def byId(id: Long): TxCache = Await.result(db.run(Txs.filter(tx => tx.id === id).result.head), Duration.Inf)
 
-  def byTokenId(tokenId: String): (Seq[TxCache], Seq[TxCache]) = {
+  def byTokenId(tokenId: String, offset: Int, limit: Int): (Seq[TxCache], Seq[TxCache], Int) = {
     val types = Seq("Winner", "Charity")
     val q = for {
       successTxs <- Txs.filter(tx => tx.tokenId === tokenId && (tx.txType inSet types)).result
-      other <- if (successTxs.nonEmpty) Txs.filter(tx => tx.tokenId === tokenId && !(tx.txType inSet types)).result else Txs.filter(tx => tx.tokenId === tokenId && tx.txType === "Refund").result
+      otherQuery <- if (successTxs.nonEmpty) DBIO.successful(Txs.filter(tx => tx.tokenId === tokenId && !(tx.txType inSet types))) else DBIO.successful(Txs.filter(tx => tx.tokenId === tokenId && tx.txType === "Refund"))
+      setLimitOffset <- otherQuery.drop(offset).take(limit).result
+      total <- (otherQuery.length + successTxs.length).result
     }
-    yield (successTxs, other)
+    yield (successTxs, setLimitOffset, total)
     Await.result(db.run(q), Duration.Inf)
   }
 
