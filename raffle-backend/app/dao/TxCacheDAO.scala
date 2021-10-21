@@ -57,7 +57,15 @@ class TxCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvide
    */
   def byId(id: Long): TxCache = Await.result(db.run(Txs.filter(tx => tx.id === id).result.head), Duration.Inf)
 
-  def byTokenId(tokenId: String): Seq[TxCache] = Await.result(db.run(Txs.filter(tx => tx.tokenId === tokenId).result), Duration.Inf)
+  def byTokenId(tokenId: String): (Seq[TxCache], Seq[TxCache]) = {
+    val types = Seq("Winner", "Charity")
+    val q = for {
+      successTxs <- Txs.filter(tx => tx.tokenId === tokenId && (tx.txType inSet types)).result
+      other <- Txs.filter(tx => tx.tokenId === tokenId && !(tx.txType inSet types)).result
+    }
+    yield (successTxs, other)
+    Await.result(db.run(q), Duration.Inf)
+  }
 
   def byTxId(txId: String): TxCache = Await.result(db.run(Txs.filter(tx => tx.txId === txId).result.head), Duration.Inf)
   def refundByTxId(txId: String): TxCache = Await.result(db.run(Txs.filter(tx => tx.txId === txId && tx.txType === "Refund").result.head), Duration.Inf)
