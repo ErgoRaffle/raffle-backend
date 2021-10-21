@@ -61,7 +61,7 @@ class TxCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvide
     val types = Seq("Winner", "Charity")
     val q = for {
       successTxs <- Txs.filter(tx => tx.tokenId === tokenId && (tx.txType inSet types)).result
-      other <- Txs.filter(tx => tx.tokenId === tokenId && !(tx.txType inSet types)).result
+      other <- if (successTxs.nonEmpty) Txs.filter(tx => tx.tokenId === tokenId && !(tx.txType inSet types)).result else Txs.filter(tx => tx.tokenId === tokenId && tx.txType === "Refund").result
     }
     yield (successTxs, other)
     Await.result(db.run(q), Duration.Inf)
