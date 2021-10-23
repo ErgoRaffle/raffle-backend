@@ -20,21 +20,11 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
 
   private val logger: Logger = Logger(this.getClass)
 
-  def rafflesWithSorting(sorting: String, states: List[String], offset: Int, limit: Int): Json ={
+  def rafflesWithSorting(sorting: String, state: String, offset: Int, limit: Int): Json ={
     try {
-      val allRaffles = raffleCacheDAO.all.filter(raffle => states.contains(raffle.state))
-      val sortedRaffles = {
-        if(sorting == "createTime") allRaffles.sortBy(_.creationTime)(Ordering[Long].reverse)
-        else if(sorting == "deadline") allRaffles.sortBy(_.deadlineHeight)
-        else allRaffles.sortBy(_.lastActivity)(Ordering[Long].reverse)
-      }
-      val end = Math.min(limit + offset, sortedRaffles.size)
-      var raffles: ListBuffer[Json] = ListBuffer()
-      var raffleCount: Int = 0
-      for (i <- offset until end) {
-        raffleCount += 1
-        val raffle = sortedRaffles(i)
-        raffles += Json.fromFields(List(
+      val raffles = raffleCacheDAO.selectRaffles(state, sorting, offset, limit)
+      val serializedRaffles = raffles._1.map(raffle => {
+        Json.fromFields(List(
           ("id", Json.fromString(raffle.tokenId)),
           ("name", Json.fromString(raffle.name)),
           ("description", Json.fromString(raffle.description)),
@@ -45,11 +35,11 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
           ("status", Json.fromString(raffle.state)),
           ("donatedPeople", Json.fromLong(raffle.participants))
         ))
-      }
+      })
 
       Json.fromFields(List(
-        ("items", Json.fromValues(raffles.toList)),
-        ("total", Json.fromInt(raffleCount)),
+        ("items", Json.fromValues(serializedRaffles.toList)),
+        ("total", Json.fromInt(raffles._2)),
       ))
     }
     catch {
