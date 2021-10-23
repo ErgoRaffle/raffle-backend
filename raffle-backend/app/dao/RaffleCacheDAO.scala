@@ -89,6 +89,35 @@ class RaffleCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
    */
   def all: Seq[RaffleCache] = Await.result(db.run(raffles.result), Duration.Inf)
 
+   /**
+   * select raffles according to limit offset and status
+   * @return list of CreateReq and total RaffleCaches
+   */
+  def selectRaffles(state: String, sorting: String, offset: Int, limit: Int): (Seq[RaffleCache], Int) = {
+    val statesInsteadAll = List("active", "succeed", "failed")
+    val q = for {
+      querySelectRaffles <- DBIO.successful(if (state == "all") raffles.filter(_.state inSet statesInsteadAll) else raffles.filter(_.state === state))
+      setLimitOffset <- {
+        val  setLimitOffset = {
+          sorting.toLowerCase match {
+            case "createtime" => querySelectRaffles.sortBy(_.creationTime.desc)
+            case "-createtime" => querySelectRaffles.sortBy(_.creationTime.asc)
+            case "deadline" => querySelectRaffles.sortBy(_.deadlineHeight.desc)
+            case "-deadline" => querySelectRaffles.sortBy(_.deadlineHeight.asc)
+            case "activity" => querySelectRaffles.sortBy(_.lastActivity.desc)
+            case "-activity" => querySelectRaffles.sortBy(_.lastActivity.asc)
+            case _ => querySelectRaffles.sortBy(_.lastActivity.desc)
+          }
+        }
+        val selectQ = setLimitOffset.drop(offset).take(limit)
+        selectQ.result
+      }
+      total <- querySelectRaffles.length.result
+    } yield (setLimitOffset, total)
+
+    Await.result(db.run(q), Duration.Inf)
+  }
+
   /**
    * @param id request id
    * @return request associated with the id

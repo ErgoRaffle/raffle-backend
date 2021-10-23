@@ -39,11 +39,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
   def getRaffles(sorting: String, status: String, offset: Int, limit: Int) = Action { implicit request: Request[AnyContent] =>
     logger.info("Responding get raffles request")
     try {
-      val validStates: List[String] ={
-        if(status == "all") List("active", "succeed", "failed")
-        else List(status)
-      }
-      val result = raffleUtils.rafflesWithSorting(sorting, validStates, offset, Math.min(limit, 100))
+      val result = raffleUtils.rafflesWithSorting(sorting, status, offset, Math.min(limit, 100))
       Ok(result.toString()).as("application/json")
     } catch {
       case e: Throwable => exception(e)
