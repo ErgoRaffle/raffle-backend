@@ -84,7 +84,17 @@ class TxCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvide
   def winnerByTokenId(tokenId: String): TxCache =
     Await.result(db.run(Txs.filter(tx => tx.tokenId === tokenId && tx.txType === "Winner").result.head), Duration.Inf)
 
-  def byWalletAdd(walletAdd: String): Seq[TxCache] =
+  def byWalletAdd(walletAdd: String, offset: Int, limit: Int): (Seq[(String, Option[Long])], Int) ={
+    val query = for {
+      walletTickets <- DBIO.successful(Txs.filter(tx => tx.walletAdd === walletAdd && tx.txType === "Ticket")
+        .groupBy(_.tokenId).map{ case (tokenId, tx) => (tokenId, tx.map(_.tokenCount).sum)})
+      walletTicketLength <- walletTickets.length.result
+      walletTicketLimit <- walletTickets.drop(offset).take(limit).result
+    } yield (walletTicketLimit, walletTicketLength)
+    Await.result(db.run(query), Duration.Inf)
+  }
+
+  def byWalletAdd2(walletAdd: String): Seq[TxCache] =
     Await.result(db.run(Txs.filter(tx => tx.walletAdd === walletAdd && tx.txType === "Ticket").result), Duration.Inf)
   def winnerByWalletAdd(walletAdd: String): Seq[TxCache] =
     Await.result(db.run(Txs.filter(tx => tx.walletAdd === walletAdd && tx.txType === "Winner").result), Duration.Inf)

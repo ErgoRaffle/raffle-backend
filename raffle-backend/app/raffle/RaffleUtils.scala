@@ -178,16 +178,13 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
 
   def walletDonations(walletAdd: String, offset: Int, limit: Int): Json = {
     try {
-      var donations: ListBuffer[Json] = ListBuffer()
-      var totalRecords: Long = 0
-      val tickets: List[(String, Long)] = txCacheDAO.byWalletAdd(walletAdd).map(t => (t.tokenId, t.tokenCount))
-        .groupBy(_._1).mapValues(seq => seq.map(_._2).sum).toList
-      val end = Math.min(tickets.size, offset + limit)
+      val queryResult = txCacheDAO.byWalletAdd(walletAdd, offset, limit)
+      val tickets: List[(String, Long)] = queryResult._1.map(ticket => (ticket._1, ticket._2.getOrElse(0).asInstanceOf[Long])).toList
+      val totalRecords: Long = queryResult._2
 
-      for (i <- offset until end) {
-        val ticket = tickets(i)
+      val donations = tickets.map(ticket => {
         val raffle = raffleCacheDAO.byTokenId(ticket._1)
-        donations += Json.fromFields(List(
+        Json.fromFields(List(
           ("id", Json.fromString(raffle.tokenId)),
           ("name", Json.fromString(raffle.name)),
           ("description", Json.fromString(raffle.description)),
@@ -195,10 +192,9 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
           ("picture", parse(raffle.picLinks).getOrElse(Json.fromValues(List[Json]()))),
           ("erg", Json.fromLong(raffle.raised)),
           ("goal", Json.fromLong(raffle.goal)),
-          ("tickets", Json.fromLong(ticket._2)),
+          ("tickets", Json.fromLong(ticket._2.toLong)),
         ))
-        totalRecords += 1
-      }
+      })
 
       Json.fromFields(List(
         ("items", Json.fromValues(donations.toList)),
