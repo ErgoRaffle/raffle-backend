@@ -37,7 +37,6 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
 
 
   def getRaffles(sorting: String, status: String, offset: Int, limit: Int) = Action { implicit request: Request[AnyContent] =>
-    logger.info("Responding get raffles request")
     try {
       val result = raffleUtils.rafflesWithSorting(sorting, status, offset, Math.min(limit, 100))
       Ok(result.toString()).as("application/json")
@@ -49,7 +48,6 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
 
   def getRafflesByTokenId(tokenId: String): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
-      logger.info("Responding get raffle request by token id: "+ tokenId)
       val savedRaffle = raffleCacheDAO.byTokenId(tokenId)
       if(savedRaffle.state == "active") {
         val result = raffleUtils.raffleByTokenId(tokenId)
@@ -109,12 +107,12 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     try {
       val name: String = request.body.hcursor.downField("name").as[String].getOrElse(throw new Throwable("name field must exist"))
       val description: String = request.body.hcursor.downField("description").as[String].getOrElse(throw new Throwable("description field must exist"))
-      val goal: Long = request.body.hcursor.downField("goal").as[Long].getOrElse(throw new Throwable("minToRaise field must exist"))
+      val goal: Long = request.body.hcursor.downField("goal").as[Long].getOrElse(throw new Throwable("goal field must exist"))
       val deadlineHeight: Long = request.body.hcursor.downField("deadline").as[Long].getOrElse(throw new Throwable("deadlineHeight field must exist"))
       val charityPercent: Int = request.body.hcursor.downField("charityPercent").as[Int].getOrElse(throw new Throwable("charityPercent field must exist"))
-      val charityAddr: String = request.body.hcursor.downField("charity").as[String].getOrElse(throw new Throwable("charityAddr field must exist"))
-      val walletAddr: String = request.body.hcursor.downField("wallet").as[String].getOrElse(throw new Throwable("charityAddr field must exist"))
-      val ticketPrice: Long = request.body.hcursor.downField("ticketPrice").as[Long].getOrElse(throw new Throwable("charityAddr field must exist"))
+      val charityAddr: String = request.body.hcursor.downField("charity").as[String].getOrElse(throw new Throwable("charity field must exist"))
+      val walletAddr: String = request.body.hcursor.downField("wallet").as[String].getOrElse(throw new Throwable("wallet field must exist"))
+      val ticketPrice: Long = request.body.hcursor.downField("ticketPrice").as[Long].getOrElse(throw new Throwable("ticketPrice field must exist"))
       val captcha: String = request.body.hcursor.downField("recaptcha").as[String].getOrElse("")
       if(Configs.recaptchaKey != "not-set") utils.verifyRecaptcha(captcha)
       // TODO: Add pictures
@@ -231,6 +229,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
 
   def walletTickets(walletAdd: String, offset: Int, limit: Int): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
+      // TODO limit offset
       val result = raffleUtils.walletDonations(walletAdd, offset, Math.min(limit, 100))
       Ok(result.toString()).as("application/json")
     } catch{
@@ -240,6 +239,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
 
   def walletWins(walletAdd: String, offset: Int, limit: Int): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
+      // TODO limit offset
       val result = raffleUtils.walletWins(walletAdd, offset, Math.min(limit, 100))
       Ok(result.toString()).as("application/json")
     } catch{

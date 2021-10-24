@@ -73,6 +73,11 @@ class TxCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvide
     Await.result(db.run(q), Duration.Inf)
   }
 
+  def refundedTickets(tokenId: String): Long ={
+    val q = Txs.filter(tx => tx.tokenId === tokenId).map(_.tokenCount).sum.result
+    Await.result(db.run(q), Duration.Inf).getOrElse(0)
+  }
+
   def byTxId(txId: String): TxCache = Await.result(db.run(Txs.filter(tx => tx.txId === txId).result.head), Duration.Inf)
   def refundByTxId(txId: String): TxCache = Await.result(db.run(Txs.filter(tx => tx.txId === txId && tx.txType === "Refund").result.head), Duration.Inf)
 

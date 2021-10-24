@@ -14,6 +14,7 @@ import sigmastate.serialization.ErgoTreeSerializer
 import network.Request
 import play.api.Logger
 import play.api.libs.json._
+import raffle.Addresses
 
 import scala.collection.mutable.Seq
 import scala.util.Try
@@ -32,7 +33,7 @@ final case class noRaffleException(private val message: String = "No raffle foun
 
 
 @Singleton
-class Utils @Inject()(client: Client, explorer: Explorer) {
+class Utils @Inject()(client: Client, explorer: Explorer, addresses: Addresses) {
   private val logger: Logger = Logger(this.getClass)
 
   def getStackTraceStr(e: Throwable): String = {
@@ -293,9 +294,20 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
       explorer.getAllTokenBoxes(tokenId, offset, 100)
         .hcursor.downField("items").as[Seq[ciJson]].getOrElse(null)
         .filter(_.hcursor.downField("assets").as[Seq[ciJson]].getOrElse(null).size == 1)
+        .filter(_.hcursor.downField("address").as[String].getOrElse("") == addresses.ticketAddress.toString)
     } catch{
       case _: Throwable => throw new parseException
     }
+  }
+
+  def getAllRaffleBoxes(offset: Int): List[ciJson] = try {
+    explorer.getUnspentTokenBoxes(Configs.token.service, offset, 100)
+      .hcursor.downField("items").as[List[ciJson]].getOrElse(null)
+      .filter(_.hcursor.downField("assets").as[Seq[ciJson]].getOrElse(null).size > 1)
+      .filter(_.hcursor.downField("assets").as[Seq[ciJson]].getOrElse(null).head
+        .hcursor.downField("tokenId").as[String].getOrElse("") == Configs.token.service)
+  } catch {
+    case _: Throwable => throw new noRaffleException
   }
 
   def getTransactionFrontLink(txId: String): String = Configs.explorerFront + "/en/transactions/" + txId
