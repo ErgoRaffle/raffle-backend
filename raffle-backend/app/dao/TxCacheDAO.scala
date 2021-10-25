@@ -73,18 +73,30 @@ class TxCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvide
     Await.result(db.run(q), Duration.Inf)
   }
 
+  /**
+   * @param tokenId raffle token id
+   * @return sum of refunded tickets belonging to the specified raffle
+   */
   def refundedTickets(tokenId: String): Long ={
-    val q = Txs.filter(tx => tx.tokenId === tokenId).map(_.tokenCount).sum.result
+    val q = Txs.filter(tx => tx.tokenId === tokenId && tx.txType === "Refund").map(_.tokenCount).sum.result
     Await.result(db.run(q), Duration.Inf).getOrElse(0)
   }
 
   def byTxId(txId: String): TxCache = Await.result(db.run(Txs.filter(tx => tx.txId === txId).result.head), Duration.Inf)
   def refundByTxId(txId: String): TxCache = Await.result(db.run(Txs.filter(tx => tx.txId === txId && tx.txType === "Refund").result.head), Duration.Inf)
 
+  /**
+   * @param tokenId raffle token id
+   * @return winner ticket of the specified raffle
+   */
   def winnerByTokenId(tokenId: String): TxCache =
     Await.result(db.run(Txs.filter(tx => tx.tokenId === tokenId && tx.txType === "Winner").result.head), Duration.Inf)
 
-  def byWalletAdd(walletAdd: String, offset: Int, limit: Int): (Seq[(String, Option[Long])], Int) ={
+  /**
+   * @param walletAdd user wallet address
+   * @return All donations done using the wallet address aggregated on each raffle
+   */
+  def getDonationsByWalletAddr(walletAdd: String, offset: Int, limit: Int): (Seq[(String, Option[Long])], Int) ={
     val query = for {
       walletTickets <- DBIO.successful(Txs.filter(tx => tx.walletAdd === walletAdd && tx.txType === "Ticket")
         .groupBy(_.tokenId).map{ case (tokenId, tx) => (tokenId, tx.map(_.tokenCount).sum)})
@@ -94,7 +106,11 @@ class TxCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvide
     Await.result(db.run(query), Duration.Inf)
   }
 
-  def winnerByWalletAdd(walletAdd: String, offset: Int, limit: Int): (Seq[TxCache], Int) = {
+  /**
+   * @param walletAdd user wallet address
+   * @return a seq of winner tickets belonging to this address
+   */
+  def winnerByWalletAddr(walletAdd: String, offset: Int, limit: Int): (Seq[TxCache], Int) = {
     val query = for {
       walletWins <- DBIO.successful(Txs.filter(tx => tx.walletAdd === walletAdd && tx.txType === "Winner"))
       walletWinsLength <- walletWins.length.result

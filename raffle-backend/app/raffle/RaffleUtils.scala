@@ -178,11 +178,10 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
 
   def walletDonations(walletAdd: String, offset: Int, limit: Int): Json = {
     try {
-      val queryResult = txCacheDAO.byWalletAdd(walletAdd, offset, limit)
-      val tickets: List[(String, Long)] = queryResult._1.map(ticket => (ticket._1, ticket._2.getOrElse(0).asInstanceOf[Long])).toList
+      val queryResult = txCacheDAO.getDonationsByWalletAddr(walletAdd, offset, limit)
       val totalRecords: Long = queryResult._2
 
-      val donations = tickets.map(ticket => {
+      val donations = queryResult._1.map(ticket => {
         val raffle = raffleCacheDAO.byTokenId(ticket._1)
         Json.fromFields(List(
           ("id", Json.fromString(raffle.tokenId)),
@@ -192,7 +191,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
           ("picture", parse(raffle.picLinks).getOrElse(Json.fromValues(List[Json]()))),
           ("erg", Json.fromLong(raffle.raised)),
           ("goal", Json.fromLong(raffle.goal)),
-          ("tickets", Json.fromLong(ticket._2.toLong)),
+          ("tickets", Json.fromLong(ticket._2.getOrElse(0))),
         ))
       })
 
@@ -215,7 +214,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
 
   def walletWins(walletAdd: String, offset: Int, limit: Int): Json = {
     try{
-      val queryResult = txCacheDAO.winnerByWalletAdd(walletAdd, offset, limit)
+      val queryResult = txCacheDAO.winnerByWalletAddr(walletAdd, offset, limit)
       val tickets = queryResult._1
       val totalRecords: Long = queryResult._2
 
