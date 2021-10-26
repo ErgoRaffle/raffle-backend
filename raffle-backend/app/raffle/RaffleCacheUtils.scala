@@ -37,26 +37,17 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
     }
     if (state == "failed" && savedRaffle.tickets - savedRaffle.redeemedTickets != raffle.tickets) {
       UnsuccessfulRaffleTxUpdate(raffle.tokenId)
-      raffleCacheDAO.updateRedeemed(savedRaffle.id, raffle.tickets - savedRaffle.tickets)
+      raffleCacheDAO.updateRedeemed(savedRaffle.id, savedRaffle.tickets - raffle.tickets)
     }
   }
 
   def raffleSearch(): Unit = {
     logger.debug("Searching for new raffles started")
     try {
-      var items: List[Json] = null
-      var response = explorer.getUnspentTokenBoxes(Configs.token.service, 0, 100)
-      try {
-        items = response.hcursor.downField("items").as[List[Json]].getOrElse(null)
-          .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).size > 1)
-          .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).head
-            .hcursor.downField("tokenId").as[String].getOrElse("") == Configs.token.service)
-      } catch {
-        case _: Throwable => throw new noRaffleException
-      }
+      var offset: Int = 0
+      var items = utils.getAllRaffleBoxes(offset)
       raffleCacheDAO.updatingStatus()
 
-      var offset: Int = 100
       while (items != null && items.nonEmpty) {
         items.foreach(box => {
           val raffle: Raffle = Raffle(box)
@@ -78,16 +69,8 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
             }
           }
         })
-        response = explorer.getUnspentTokenBoxes(Configs.token.service, offset, 100)
-        try {
-          items = response.hcursor.downField("items").as[List[Json]].getOrElse(null)
-            .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).size > 1)
-            .filter(_.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).head
-              .hcursor.downField("tokenId").as[String].getOrElse("") == Configs.token.service)
-        } catch {
-          case _: Throwable => throw new noRaffleException
-        }
         offset += 100
+        items = utils.getAllRaffleBoxes(offset)
       }
 
       raffleCacheDAO.selectAfterUpdating().foreach(raffle => {
@@ -101,7 +84,7 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
           }
         }
         else if (raffle.state == "failed") {
-          if (raffle.tickets == raffle.redeemedTickets) raffleCacheDAO.completeByTokenId(raffle.tokenId)
+          if (txCacheDAO.refundedTickets(raffle.tokenId) >= raffle.tickets) raffleCacheDAO.completeByTokenId(raffle.tokenId)
           else UnsuccessfulRaffleTxUpdate(raffle.tokenId)
         }
         else {
@@ -147,20 +130,15 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
     var tickets = utils.getTicketBoxes(tokenId, offset)
     while (tickets != null && tickets.nonEmpty) {
       tickets.foreach(ticketBox => {
-        try {
-          val ticket = Ticket(ticketBox)
-          try txCacheDAO.byTxId(ticket.txId)
-          catch {
-            case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, "Ticket", ticket.walletAddress)
-          }
-          // Winner Reward
-          val spendTxId: String = ticketBox.hcursor.downField("spentTransactionId").as[String].getOrElse("")
-          if (spendTxId != "")
-            txCacheDAO.insert(spendTxId, tokenId, ticket.tokenCount, "Winner", ticket.walletAddress)
-        } catch{
-          case _: org.ergoplatform.validation.ValidationException =>
-          case e: Throwable => logger.error(e.getMessage)
+        val ticket = Ticket(ticketBox)
+        try txCacheDAO.byTxId(ticket.txId)
+        catch {
+          case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, "Ticket", ticket.walletAddress)
         }
+        // Winner Reward
+        val spendTxId: String = ticketBox.hcursor.downField("spentTransactionId").as[String].getOrElse("")
+        if (spendTxId != "")
+          txCacheDAO.insert(spendTxId, tokenId, ticket.tokenCount, "Winner", ticket.walletAddress)
       })
       offset += 100
       tickets = utils.getTicketBoxes(tokenId, offset)
@@ -176,25 +154,20 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
     var tickets = utils.getTicketBoxes(tokenId, offset)
     while (tickets != null && tickets.nonEmpty) {
       tickets.foreach(ticketBox => {
-        try {
-          val ticket = Ticket(ticketBox)
-          // Refund Tx
-          try txCacheDAO.refundByTxId(ticket.txId)
-          catch {
-            case _: Throwable => {
-              val spendTxId: String = ticketBox.hcursor.downField("spentTransactionId").as[String].getOrElse("")
-              if (spendTxId != "")
-                txCacheDAO.insert(spendTxId, tokenId, ticket.tokenCount, "Refund", ticket.walletAddress)
-            }
+        val ticket = Ticket(ticketBox)
+        // Refund Tx
+        try txCacheDAO.refundByTxId(ticket.txId)
+        catch {
+          case _: Throwable => {
+            val spendTxId: String = ticketBox.hcursor.downField("spentTransactionId").as[String].getOrElse("")
+            if (spendTxId != "")
+              txCacheDAO.insert(spendTxId, tokenId, ticket.tokenCount, "Refund", ticket.walletAddress)
           }
-          // Ticket Tx
-          try txCacheDAO.byTxId(ticket.txId)
-          catch {
-            case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, "Ticket", ticket.walletAddress)
-          }
-        } catch{
-          case _: org.ergoplatform.validation.ValidationException =>
-          case e: Throwable => logger.error(e.getMessage)
+        }
+        // Ticket Tx
+        try txCacheDAO.byTxId(ticket.txId)
+        catch {
+          case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, "Ticket", ticket.walletAddress)
         }
       })
       offset += 100
@@ -237,7 +210,7 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
       logger.info(s"Found ${raffleList.size} raffle boxes belonging to ${maxParticipation.size} number of raffles")
       raffleList.foreach(raffle => {
           if(!raffleIdList.contains(raffle.tokenId)) {
-            println("New raffle found with Token Id: " + raffle.tokenId)
+            logger.info("New raffle found with Token Id: " + raffle.tokenId)
             // TODO change the creationTime
             val participants: Long = utils.raffleParticipants(raffle.tokenId)
             raffleCacheDAO.initialInsert(raffle, participants, 0,0,
@@ -245,7 +218,6 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
             raffleIdList = raffleIdList :+ raffle.tokenId
           }
       })
-
     } catch{
       case e: connectionException => logger.info(e.getMessage)
       case _: parseException =>
