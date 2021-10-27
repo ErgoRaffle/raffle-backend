@@ -1,24 +1,28 @@
 package controllers
 
-import dao.{CreateReqDAO, DonateReqDAO, RaffleCacheDAO}
-import helpers.{Configs, Utils}
+import dao.{CreateReqDAO, DonateReqDAO, RaffleCacheDAO, TxCacheDAO}
+import helpers.{Configs, Utils, internalException}
 import io.circe.Json
 import io.circe.generic.codec.DerivedAsObjectCodec.deriveCodec
 import io.circe.parser
 import network.{Client, Explorer}
-import raffle.{Addresses, CreateReqUtils, DonateReqUtils, RaffleUtils}
+import raffle.{Addresses, CreateReqUtils, DonateReqUtils, RaffleUtils, raffleStatus}
+import raffle.raffleStatus._
 import play.api.Logger
 import play.api.libs.circe.Circe
 import play.api.mvc._
+
 import javax.inject._
-import models.{CreateReq, DonateReq}
+import models.{CreateReq, DonateReq, Raffle, TxCache}
+
+import scala.collection.mutable.Seq
 
 
 @Singleton
 class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: Explorer, donateReqUtils: DonateReqUtils,
                                client: Client, createReqUtils: CreateReqUtils, raffleUtils: RaffleUtils, utils: Utils,
                                createReqDAO: CreateReqDAO, donateReqDAO: DonateReqDAO, raffleCacheDAO: RaffleCacheDAO,
-                               val controllerComponents: ControllerComponents) extends BaseController
+                               txCacheDAO: TxCacheDAO, val controllerComponents: ControllerComponents) extends BaseController
   with Circe {
   private val logger: Logger = Logger(this.getClass)
 
@@ -38,10 +42,31 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
 
   def getRaffles(sorting: String, status: String, offset: Int, limit: Int) = Action { implicit request: Request[AnyContent] =>
     try {
-      val result = raffleUtils.rafflesWithSorting(sorting, status, offset, Math.min(limit, 100))
+      val result = {
+        val raffles = raffleCacheDAO.selectRaffles(status, sorting, offset, Math.min(offset, 100))
+        val serializedRaffles = raffles._1.map(raffle => {
+          Json.fromFields(List(
+            ("id", Json.fromString(raffle.tokenId)),
+            ("name", Json.fromString(raffle.name)),
+            ("description", Json.fromString(raffle.description)),
+            ("deadline", Json.fromLong(raffle.deadlineHeight)),
+            ("picture", parser.parse(raffle.picLinks).getOrElse(Json.fromValues(List[Json]()))),
+            ("erg", Json.fromLong(raffle.raised)),
+            ("goal", Json.fromLong(raffle.goal)),
+            ("status", Json.fromString(raffleStatus.apply(raffle.state).toString)),
+            ("donatedPeople", Json.fromLong(raffle.participants))
+          ))
+        })
+        Json.fromFields(List(
+          ("items", Json.fromValues(serializedRaffles.toList)),
+          ("total", Json.fromInt(raffles._2)),
+        ))
+      }
       Ok(result.toString()).as("application/json")
     } catch {
-      case e: Throwable => exception(e)
+      case e: Throwable =>
+        logger.error(utils.getStackTraceStr(e))
+        throw new internalException
     }
   }
 
@@ -49,8 +74,40 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
   def getRafflesByTokenId(tokenId: String): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
       val savedRaffle = raffleCacheDAO.byTokenId(tokenId)
-      if(savedRaffle.state == "active") {
-        val result = raffleUtils.raffleByTokenId(tokenId)
+      if(savedRaffle.state == active.id) {
+        val result = try {
+          val raffle = Raffle(raffleUtils.getRaffleBoxByTokenId(tokenId))
+          val savedRaffle = raffleCacheDAO.byTokenId(tokenId)
+          raffleCacheDAO.updateRaised(savedRaffle.id, raffle.raised, raffle.tickets)
+
+          Json.fromFields(List(
+            ("id", Json.fromString(raffle.tokenId)),
+            ("name", Json.fromString(raffle.name)),
+            ("description", Json.fromString(raffle.description)),
+            ("deadline", Json.fromLong(raffle.deadlineHeight)),
+            ("goal", Json.fromLong(raffle.goal)),
+            ("picture", parser.parse(raffle.picLinks).getOrElse(Json.fromValues(List[Json]()))),
+            ("charity", Json.fromString(raffle.charityAddr)),
+            ("percent", Json.fromFields(List(
+              ("charity", Json.fromLong(raffle.charityPercent)),
+              ("winner", Json.fromLong(raffle.winnerPercent)),
+              ("service", Json.fromLong(raffle.serviceFee))
+            ))),
+            ("ticket", Json.fromFields(List(
+              ("price", Json.fromLong(raffle.ticketPrice)),
+              ("sold", Json.fromLong(raffle.tickets)),
+              ("erg", Json.fromLong(raffle.raised))
+            ))),
+            ("donatedPeople", Json.fromLong(savedRaffle.participants)),
+            ("status", Json.fromString(raffleStatus.apply(savedRaffle.state).toString)),
+            ("txFee", Json.fromLong(Configs.fee))
+          ))
+        } catch {
+          case e: internalException => throw e
+          case e: Throwable =>
+            logger.error(utils.getStackTraceStr(e))
+            throw e
+        }
         Ok(result.toString()).as("application/json")
       } else {
         val result = Json.fromFields(List(
@@ -72,7 +129,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
             ("erg", Json.fromLong(savedRaffle.raised))
           ))),
           ("donatedPeople", Json.fromLong(savedRaffle.participants)),
-          ("status", Json.fromString(savedRaffle.state)),
+          ("status", Json.fromString(raffleStatus.apply(savedRaffle.state).toString)),
           ("txFee", Json.fromLong(Configs.fee))
         ))
         Ok(result.toString()).as("application/json")
@@ -220,30 +277,100 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
 
   def raffleTransactions(tokenId: String, offset: Int, limit: Int): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
-      val result = raffleUtils.raffleTxsByTokenId(tokenId, offset, Math.min(limit, 100))
+      val result = {
+        val txs = txCacheDAO.byTokenId(tokenId, offset, limit)
+        var tmpTxs: scala.Seq[TxCache] = Seq.empty
+        // TODO: condition (Add charityTx) is a fake tx should be remove in production
+        if (txs._3 != 0 && txs._1.nonEmpty) {
+          val charityTx = txs._2.head.copy(txType = "Charity")
+          tmpTxs = txs._1 :+ charityTx
+        }
+        tmpTxs ++= txs._2
+        val transactions = tmpTxs.take(limit).map(tx => {
+          Json.fromFields(List(
+            ("id", Json.fromString(tx.txId)),
+            ("address", Json.fromString(tx.wallerAdd)),
+            ("type", Json.fromString(tx.txType)),
+            ("tickets", Json.fromLong(tx.tokenCount)),
+            ("link", Json.fromString(utils.getTransactionFrontLink(tx.txId)))
+          ))
+        })
+        Json.fromFields(List(
+          ("items", Json.fromValues(transactions.toList)),
+          ("total", Json.fromInt(txs._4))
+        ))
+      }
       Ok(result.toString()).as("application/json")
     } catch{
-      case e: Throwable => exception(e)
+      case e: Throwable =>
+        logger.error(utils.getStackTraceStr(e))
+        exception(e)
     }
   }
 
   def walletTickets(walletAdd: String, offset: Int, limit: Int): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
-      // TODO limit offset
-      val result = raffleUtils.walletDonations(walletAdd, offset, Math.min(limit, 100))
+      val result = {
+        val queryResult = txCacheDAO.getDonationsByWalletAddr(walletAdd, offset, Math.min(limit,100))
+        val totalRecords: Long = queryResult._2
+        val donations = queryResult._1.map(ticket => {
+          val raffle = raffleCacheDAO.byTokenId(ticket._1)
+          Json.fromFields(List(
+            ("id", Json.fromString(raffle.tokenId)),
+            ("name", Json.fromString(raffle.name)),
+            ("description", Json.fromString(raffle.description)),
+            ("deadline", Json.fromLong(raffle.deadlineHeight)),
+            ("picture", parser.parse(raffle.picLinks).getOrElse(Json.fromValues(List[Json]()))),
+            ("erg", Json.fromLong(raffle.raised)),
+            ("goal", Json.fromLong(raffle.goal)),
+            ("status", Json.fromString(raffleStatus.apply(raffle.state).toString)),
+            ("tickets", Json.fromLong(ticket._2.getOrElse(0))),
+          ))
+        })
+        Json.fromFields(List(
+          ("items", Json.fromValues(donations.toList)),
+          ("total", Json.fromLong(totalRecords))
+        ))
+      }
       Ok(result.toString()).as("application/json")
     } catch{
-      case e: Throwable => exception(e)
+      case e: Throwable =>
+        // TODO
+        exception(e)
     }
   }
 
   def walletWins(walletAdd: String, offset: Int, limit: Int): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
-      // TODO limit offset
-      val result = raffleUtils.walletWins(walletAdd, offset, Math.min(limit, 100))
+      val result = {
+        val queryResult = txCacheDAO.winnerByWalletAddr(walletAdd, offset, Math.min(limit,100))
+        val tickets = queryResult._1
+        val totalRecords: Long = queryResult._2
+
+        val wins = tickets.map(ticket => {
+          val raffle = raffleCacheDAO.byTokenId(ticket.tokenId)
+          Json.fromFields(List(
+            ("id", Json.fromString(raffle.tokenId)),
+            ("name", Json.fromString(raffle.name)),
+            ("description", Json.fromString(raffle.description)),
+            ("deadline", Json.fromLong(raffle.deadlineHeight)),
+            ("picture", parser.parse(raffle.picLinks).getOrElse(Json.fromValues(List[Json]()))),
+            ("erg", Json.fromLong(raffle.raised)),
+            ("goal", Json.fromLong(raffle.goal)),
+            ("tickets", Json.fromLong(ticket.tokenCount)),
+            ("link", Json.fromString(utils.getTransactionFrontLink(ticket.txId)))
+          ))
+        })
+        Json.fromFields(List(
+          ("items", Json.fromValues(wins.toList)),
+          ("total", Json.fromLong(totalRecords))
+        ))
+      }
       Ok(result.toString()).as("application/json")
     } catch{
-      case e: Throwable => exception(e)
+      case e: Throwable => logger.error(utils.getStackTraceStr(e))
+        // TODO
+        exception(e)
     }
   }
 

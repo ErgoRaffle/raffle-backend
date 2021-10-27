@@ -25,9 +25,10 @@ case class DonateReq(id: Long, ticketCount: Long, fee: Long, raffleDeadline: Lon
 case class RaffleCache(id: Long, name: String, description: String, goal: Long, raised: Long,
                        deadlineHeight: Long, serviceFee: Int, charityPercent: Int, charityAddr: String,
                        ticketPrice: Long, picLinks: String, tickets: Long, participants: Long, redeemedTickets: Long,
-                       state: String, tokenId: String, creationTime: Long, lastActivity: Long, isUpdating: Boolean,
+                       state: Int, tokenId: String, creationTime: Long, lastActivity: Long, isUpdating: Boolean,
                        completed: Boolean)
 
+// TODO: TxType
 case class TxCache(id: Long, txId: String, tokenId: String, tokenCount: Long, txType: String, wallerAdd: String)
 
 case class Raffle(name: String, description: String, goal: Long, raised: Long, deadlineHeight: Long,

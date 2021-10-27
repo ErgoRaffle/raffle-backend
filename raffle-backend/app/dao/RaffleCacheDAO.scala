@@ -4,6 +4,8 @@ import javax.inject.{Inject, Singleton}
 import play.api.db.slick.{DatabaseConfigProvider, HasDatabaseConfigProvider}
 import slick.jdbc.JdbcProfile
 import models.{Raffle, RaffleCache}
+import raffle.raffleStatus
+import raffle.raffleStatus._
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future}
@@ -29,7 +31,7 @@ trait RaffleCacheComponent {
     def participants = column[Long]("PARTICIPANTS")
     def redeemedTickets = column[Long]("REDEEM_TICKETS")
 
-    def state = column[String]("STATE")
+    def state = column[Int]("STATE")
     def raffleToken = column[String]("RAFFLE_TOKEN")
     def creationTime = column[Long]("CREATION_TIME")
     def lastActivity = column[Long]("LAST_ACTIVITY")
@@ -58,7 +60,7 @@ class RaffleCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
    */
   def insert(name: String, description: String, goal: Long, raised: Long,
              deadlineHeight: Long, serviceFee: Int, charityPercent: Int, charityAdd: String,
-             ticketPrice: Long, picLinks: String, tickets: Long, participants: Long, state: String,
+             ticketPrice: Long, picLinks: String, tickets: Long, participants: Long, state: Int,
              raffleToken: String, creationTime: Long, lastActivity: Long): Future[Unit] ={
     val action = raffles += RaffleCache(1, name, description, goal, raised, deadlineHeight, serviceFee,
       charityPercent, charityAdd, ticketPrice, picLinks, tickets, participants, 0, state, raffleToken,
@@ -66,7 +68,7 @@ class RaffleCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
     db.run(action).map(_ => ())
   }
 
-  def insert(raffle: Raffle, participants: Long, state: String, creationTime: Long, lastActivity: Long): Future[Unit] ={
+  def insert(raffle: Raffle, participants: Long, state: Int, creationTime: Long, lastActivity: Long): Future[Unit] ={
     val action = raffles += RaffleCache(1, raffle.name, raffle.description, raffle.goal, raffle.raised,
       raffle.deadlineHeight, raffle.serviceFee, raffle.charityPercent, raffle.charityAddr, raffle.ticketPrice,
       raffle.picLinks, raffle.tickets, participants, 0, state, raffle.tokenId, creationTime, lastActivity,
@@ -78,7 +80,7 @@ class RaffleCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
                     maxRaised: Long, maxTicket: Long): Future[Unit] ={
     val action = raffles += RaffleCache(1, raffle.name, raffle.description, raffle.goal, maxRaised,
       raffle.deadlineHeight, raffle.serviceFee, raffle.charityPercent, raffle.charityAddr, raffle.ticketPrice,
-      raffle.picLinks, maxTicket, participants, 0, "", raffle.tokenId, creationTime, lastActivity,
+      raffle.picLinks, maxTicket, participants, 0, 0, raffle.tokenId, creationTime, lastActivity,
       isUpdating = false, completed = false)
     db.run(action).map(_ => ())
   }
@@ -94,9 +96,9 @@ class RaffleCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
    * @return list of CreateReq and total RaffleCaches
    */
   def selectRaffles(state: String, sorting: String, offset: Int, limit: Int): (Seq[RaffleCache], Int) = {
-    val statesInsteadAll = List("active", "succeed", "failed")
+    val statesInsteadAll = List(active.id, succeed.id, failed.id)
     val q = for {
-      querySelectRaffles <- DBIO.successful(if (state == "all") raffles.filter(_.state inSet statesInsteadAll) else raffles.filter(_.state === state))
+      querySelectRaffles <- DBIO.successful(if (state == "all") raffles.filter(_.state inSet statesInsteadAll) else raffles.filter(_.state === raffleStatus.withName(state).id))
       setLimitOffset <- {
         val  setLimitOffset = {
           sorting.toLowerCase match {
@@ -132,7 +134,7 @@ class RaffleCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
    */
   def deleteById(id: Long): Future[Int] = db.run(raffles.filter(req => req.id === id).delete)
 
-  def updateStateById(id: Long, state: String): Future[Int] = {
+  def updateStateById(id: Long, state: Int): Future[Int] = {
     val q = for { c <- raffles if c.id === id } yield c.state
     val updateAction = q.update(state)
     db.run(updateAction)
