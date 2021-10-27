@@ -28,8 +28,7 @@ case class RaffleCache(id: Long, name: String, description: String, goal: Long, 
                        state: Int, tokenId: String, creationTime: Long, lastActivity: Long, isUpdating: Boolean,
                        completed: Boolean)
 
-// TODO: TxType
-case class TxCache(id: Long, txId: String, tokenId: String, tokenCount: Long, txType: String, wallerAdd: String)
+case class TxCache(id: Long, txId: String, tokenId: String, tokenCount: Long, txType: Int, wallerAdd: String)
 
 case class Raffle(name: String, description: String, goal: Long, raised: Long, deadlineHeight: Long,
                   serviceFee: Int, charityPercent: Int, charityAddr: String, winnerPercent: Int, ticketPrice: Long,

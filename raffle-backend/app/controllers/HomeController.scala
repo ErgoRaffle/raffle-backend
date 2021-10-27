@@ -6,8 +6,9 @@ import io.circe.Json
 import io.circe.generic.codec.DerivedAsObjectCodec.deriveCodec
 import io.circe.parser
 import network.{Client, Explorer}
-import raffle.{Addresses, CreateReqUtils, DonateReqUtils, RaffleUtils, raffleStatus}
+import raffle.{Addresses, CreateReqUtils, DonateReqUtils, RaffleUtils, raffleStatus, txType}
 import raffle.raffleStatus._
+import raffle.txType._
 import play.api.Logger
 import play.api.libs.circe.Circe
 import play.api.mvc._
@@ -43,7 +44,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
   def getRaffles(sorting: String, status: String, offset: Int, limit: Int) = Action { implicit request: Request[AnyContent] =>
     try {
       val result = {
-        val raffles = raffleCacheDAO.selectRaffles(status, sorting, offset, Math.min(offset, 100))
+        val raffles = raffleCacheDAO.selectRaffles(status, sorting, offset, Math.min(limit, 100))
         val serializedRaffles = raffles._1.map(raffle => {
           Json.fromFields(List(
             ("id", Json.fromString(raffle.tokenId)),
@@ -136,7 +137,10 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       }
     }
     catch {
-      case e: Throwable => exception(e)
+      case _: java.util.NoSuchElementException => exception(new Throwable("No raffle exist with this id"))
+      case e: Throwable =>
+        logger.error(utils.getStackTraceStr(e))
+        exception(e)
     }
   }
 
@@ -282,7 +286,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
         var tmpTxs: scala.Seq[TxCache] = Seq.empty
         // TODO: condition (Add charityTx) is a fake tx should be remove in production
         if (txs._3 != 0 && txs._1.nonEmpty) {
-          val charityTx = txs._2.head.copy(txType = "Charity")
+          val charityTx = txs._2.head.copy(txType = charity.id)
           tmpTxs = txs._1 :+ charityTx
         }
         tmpTxs ++= txs._2
@@ -290,7 +294,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
           Json.fromFields(List(
             ("id", Json.fromString(tx.txId)),
             ("address", Json.fromString(tx.wallerAdd)),
-            ("type", Json.fromString(tx.txType)),
+            ("type", Json.fromString(txType.apply(tx.txType).toString)),
             ("tickets", Json.fromLong(tx.tokenCount)),
             ("link", Json.fromString(utils.getTransactionFrontLink(tx.txId)))
           ))
@@ -334,8 +338,9 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       }
       Ok(result.toString()).as("application/json")
     } catch{
+      case _: java.util.NoSuchElementException => exception(new Throwable("No tickets found for this address"))
       case e: Throwable =>
-        // TODO
+        logger.error(utils.getStackTraceStr(e))
         exception(e)
     }
   }
@@ -368,8 +373,9 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       }
       Ok(result.toString()).as("application/json")
     } catch{
-      case e: Throwable => logger.error(utils.getStackTraceStr(e))
-        // TODO
+      case _: java.util.NoSuchElementException => exception(new Throwable("No winner tickets found for this address"))
+      case e: Throwable =>
+        logger.error(utils.getStackTraceStr(e))
         exception(e)
     }
   }

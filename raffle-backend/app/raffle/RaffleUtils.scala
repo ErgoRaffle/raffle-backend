@@ -16,12 +16,20 @@ import scala.util.Try
 
 object raffleStatus extends Enumeration{
   type raffleStatus = Value
-
   val unknown: Value = Value(0, "unknown")
   val inactive: Value = Value(1, "inactive")
   val active: Value = Value(2, "active")
   val succeed: Value = Value(3, "succeed")
   val failed: Value = Value(4, "failed")
+}
+
+object txType extends Enumeration{
+  type raffleStatus = Value
+  val unknownType: Value = Value(0, "unknown")
+  val ticket: Value = Value(1, "ticket")
+  val winner: Value = Value(2, "winner")
+  val charity: Value = Value(3, "charity")
+  val refund: Value = Value(4, "refund")
 }
 
 class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addresses, utils: Utils) {

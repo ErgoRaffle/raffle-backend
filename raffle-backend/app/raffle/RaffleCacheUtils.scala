@@ -9,7 +9,6 @@ import play.api.Logger
 import io.circe.Json
 import models.{Raffle, RaffleCache, Ticket}
 import raffle.raffleStatus._
-
 import scala.collection.mutable.Seq
 
 
@@ -116,7 +115,7 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
       tickets.foreach(ticketBox => {
         val ticket = Ticket(ticketBox)
         try txCacheDAO.byTxId(ticket.txId)
-        catch {case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, "Ticket", ticket.walletAddress) }
+        catch {case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, txType.ticket.id, ticket.walletAddress) }
       })
       offset += 100
       tickets = raffleUtils.getTicketBoxes(tokenId, offset)
@@ -135,12 +134,12 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
         val ticket = Ticket(ticketBox)
         try txCacheDAO.byTxId(ticket.txId)
         catch {
-          case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, "Ticket", ticket.walletAddress)
+          case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, txType.ticket.id, ticket.walletAddress)
         }
         // Winner Reward
         val spendTxId: String = ticketBox.hcursor.downField("spentTransactionId").as[String].getOrElse("")
         if (spendTxId != "")
-          txCacheDAO.insert(spendTxId, tokenId, ticket.tokenCount, "Winner", ticket.walletAddress)
+          txCacheDAO.insert(spendTxId, tokenId, ticket.tokenCount, txType.winner.id, ticket.walletAddress)
       })
       offset += 100
       tickets = raffleUtils.getTicketBoxes(tokenId, offset)
@@ -163,13 +162,13 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
           case _: Throwable => {
             val spendTxId: String = ticketBox.hcursor.downField("spentTransactionId").as[String].getOrElse("")
             if (spendTxId != "")
-              txCacheDAO.insert(spendTxId, tokenId, ticket.tokenCount, "Refund", ticket.walletAddress)
+              txCacheDAO.insert(spendTxId, tokenId, ticket.tokenCount, txType.refund.id, ticket.walletAddress)
           }
         }
         // Ticket Tx
         try txCacheDAO.byTxId(ticket.txId)
         catch {
-          case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, "Ticket", ticket.walletAddress)
+          case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, txType.ticket.id, ticket.walletAddress)
         }
       })
       offset += 100
