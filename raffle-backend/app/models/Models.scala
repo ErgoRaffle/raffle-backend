@@ -72,6 +72,12 @@ object Raffle{
       case _: Throwable => throw new parseException
     }
   }
+  def apply(raffleCache: RaffleCache): Raffle ={
+    val winnerPercent = 100 - raffleCache.charityPercent - raffleCache.serviceFee
+    new Raffle(raffleCache.name, raffleCache.description, raffleCache.goal, raffleCache.raised, raffleCache.deadlineHeight,
+      raffleCache.serviceFee, raffleCache.charityPercent, raffleCache.charityAddr, winnerPercent, raffleCache.ticketPrice,
+      raffleCache.tickets, raffleCache.picLinks, raffleCache.tokenId)
+  }
 }
 
 case class Ticket(txId: String, tokenId: String, tokenCount: Long, walletAddress: String)

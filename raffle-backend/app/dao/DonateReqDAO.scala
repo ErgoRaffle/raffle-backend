@@ -53,7 +53,7 @@ class DonateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
              timeStamp: String, ttl: Long): DonateReq ={
     val insertQuery = requests returning requests.map(_.id) into ((item, id) => item.copy(id = id))
     val action = insertQuery += DonateReq(1, ticketCount, ticketPrice, raffleDeadline, state, paymentAddress, raffleToken,
-      signedDonateTx, participantAddress, timeStamp, ttl, false)
+      signedDonateTx, participantAddress, timeStamp, ttl, deleted = false)
     Await.result(db.run(action), Duration.Inf)
   }
 

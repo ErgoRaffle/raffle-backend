@@ -16,7 +16,7 @@ import play.api.mvc._
 import javax.inject._
 import models.{CreateReq, DonateReq, Raffle, TxCache}
 
-import scala.collection.mutable.Seq
+import scala.collection.mutable.{ListBuffer, Seq}
 
 
 @Singleton
@@ -40,7 +40,11 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     BadRequest(s"""{"success": false, "message": "${e.getMessage}"}""").as("application/json")
   }
 
-
+  /**
+   * @param sorting defining the sorting key, raffle sorting can be based on "createtime", "deadline" or "activity"
+   * @param status filtering raffles with specified status, it can be "all", "active", "succeed" or "failed"
+   * @return list of raffle information based on the requirements and query limit offset
+   */
   def getRaffles(sorting: String, status: String, offset: Int, limit: Int) = Action { implicit request: Request[AnyContent] =>
     try {
       val result = {
@@ -67,21 +71,21 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     } catch {
       case e: Throwable =>
         logger.error(utils.getStackTraceStr(e))
-        throw new internalException
+        exception(e)
     }
   }
 
-
+  /**
+   * @param tokenId raffle token id
+   * @return raffle information with the specified token id
+   */
   def getRafflesByTokenId(tokenId: String): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
-      val savedRaffle = raffleCacheDAO.byTokenId(tokenId)
-      if(savedRaffle.state == active.id) {
-        val result = try {
-          val raffle = Raffle(raffleUtils.getRaffleBoxByTokenId(tokenId))
-          val savedRaffle = raffleCacheDAO.byTokenId(tokenId)
-          raffleCacheDAO.updateRaised(savedRaffle.id, raffle.raised, raffle.tickets)
-
-          Json.fromFields(List(
+      val query = raffleUtils.raffleByTokenId(tokenId)
+      val raffle = query._1
+      val participants = query._2
+      val status = query._3
+      val result = Json.fromFields(List(
             ("id", Json.fromString(raffle.tokenId)),
             ("name", Json.fromString(raffle.name)),
             ("description", Json.fromString(raffle.description)),
@@ -99,70 +103,55 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
               ("sold", Json.fromLong(raffle.tickets)),
               ("erg", Json.fromLong(raffle.raised))
             ))),
-            ("donatedPeople", Json.fromLong(savedRaffle.participants)),
-            ("status", Json.fromString(raffleStatus.apply(savedRaffle.state).toString)),
+            ("donatedPeople", Json.fromLong(participants)),
+            ("status", Json.fromString(status)),
             ("txFee", Json.fromLong(Configs.fee))
           ))
-        } catch {
-          case e: internalException => throw e
-          case e: Throwable =>
-            logger.error(utils.getStackTraceStr(e))
-            throw e
-        }
-        Ok(result.toString()).as("application/json")
-      } else {
-        val result = Json.fromFields(List(
-          ("id", Json.fromString(savedRaffle.tokenId)),
-          ("name", Json.fromString(savedRaffle.name)),
-          ("description", Json.fromString(savedRaffle.description)),
-          ("deadline", Json.fromLong(savedRaffle.deadlineHeight)),
-          ("goal", Json.fromLong(savedRaffle.goal)),
-          ("picture", parser.parse(savedRaffle.picLinks).getOrElse(Json.fromValues(List[Json]()))),
-          ("charity", Json.fromString(savedRaffle.charityAddr)),
-          ("percent", Json.fromFields(List(
-            ("charity", Json.fromLong(savedRaffle.charityPercent)),
-            ("winner", Json.fromLong(100 - savedRaffle.charityPercent - savedRaffle.serviceFee)),
-            ("service", Json.fromLong(savedRaffle.serviceFee))
-          ))),
-          ("ticket", Json.fromFields(List(
-            ("price", Json.fromLong(savedRaffle.ticketPrice)),
-            ("sold", Json.fromLong(savedRaffle.tickets)),
-            ("erg", Json.fromLong(savedRaffle.raised))
-          ))),
-          ("donatedPeople", Json.fromLong(savedRaffle.participants)),
-          ("status", Json.fromString(raffleStatus.apply(savedRaffle.state).toString)),
-          ("txFee", Json.fromLong(Configs.fee))
-        ))
-        Ok(result.toString()).as("application/json")
-      }
+      Ok(result.toString()).as("application/json")
     }
     catch {
-      case _: java.util.NoSuchElementException => exception(new Throwable("No raffle exist with this id"))
+      case e: internalException => exception(e)
       case e: Throwable =>
         logger.error(utils.getStackTraceStr(e))
         exception(e)
     }
   }
 
+  /**
+   * @param tokenId raffle token id
+   * @param walletAddr user wallet address
+   * @return user tickets on the specified raffle
+   * *this api should be used for active raffles only
+   */
   def getTickets(tokenId: String, walletAddr: String): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try{
-      val result = raffleUtils.userTickets(tokenId, walletAddr)
+      val query = raffleUtils.userTickets(tokenId, walletAddr)
+      val ticketList: ListBuffer[Json] = ListBuffer()
+      query._1.foreach(ticket =>{
+        ticketList += Json.fromFields(List(
+          ("id", Json.fromString(ticket.txId)),
+          ("tickets", Json.fromLong(ticket.tokenCount)),
+          ("link", Json.fromString(utils.getTransactionFrontLink(ticket.txId)))
+        ))
+      })
+      val result = Json.fromFields(List(
+        ("items", Json.fromValues(ticketList.toList)),
+        ("totalTickets", Json.fromLong(query._2)),
+        ("total", Json.fromLong(query._3))
+      ))
       Ok(result.toString()).as("application/json")
     }
     catch {
-      case e: Throwable => exception(e)
+      case e: internalException => exception(e)
+      case e: Throwable =>
+        logger.error(utils.getStackTraceStr(e))
+        exception(e)
     }
   }
 
-  /*
-  {
-    winnerPercent :
-    deadlineHeight :
-    minToRaise :
-    name : ""
-    description : ""
-    charityAddr : ""
-  }
+  /**
+   * creates a new raffle creation request with limited time
+   * @return payment address, deadline, the creation fee, and creation request id
    */
   def addRaffle(): Action[Json] = Action(circe.json) { implicit request =>
     try {
@@ -208,6 +197,10 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     }
   }
 
+  /**
+   * @param id the request id
+   * @return status of the request with specified id
+   */
   def createReqStatus(id: Long): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
       var req: CreateReq = null
@@ -229,6 +222,10 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     }
   }
 
+  /**
+   * @param id the request id
+   * @return status of the request with specified id
+   */
   def donateReqStatus(tokenId: String, id: Long): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
       var req: DonateReq = null
@@ -250,7 +247,10 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     }
   }
 
-
+  /**
+   * creates a new donation request with limited time
+   * @return payment address, deadline, the donation fee, and the donation request id
+   */
   def donateToId(tokenId: String): Action[Json] = Action(circe.json) { implicit request =>
     try {
       val walletAddr: String = request.body.hcursor.downField("wallet").as[String].getOrElse(throw new Throwable("walletAddr field must exist"))
@@ -279,6 +279,11 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     }
   }
 
+  /**
+   * @param tokenId raffle token id
+   * @return winner, charity and user ticket transactions belonging to the specified raffle
+   * *this api should be used for finished raffles only
+   */
   def raffleTransactions(tokenId: String, offset: Int, limit: Int): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
       val result = {
@@ -312,10 +317,14 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     }
   }
 
-  def walletTickets(walletAdd: String, offset: Int, limit: Int): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
+  /**
+   * @param walletAddr user wallet address
+   * @return user donations on all raffles
+   */
+  def walletTickets(walletAddr: String, offset: Int, limit: Int): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
       val result = {
-        val queryResult = txCacheDAO.getDonationsByWalletAddr(walletAdd, offset, Math.min(limit,100))
+        val queryResult = txCacheDAO.getDonationsByWalletAddr(walletAddr, offset, Math.min(limit,100))
         val totalRecords: Long = queryResult._2
         val donations = queryResult._1.map(ticket => {
           val raffle = raffleCacheDAO.byTokenId(ticket._1)
@@ -345,10 +354,14 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     }
   }
 
-  def walletWins(walletAdd: String, offset: Int, limit: Int): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
+  /**
+   * @param walletAddr user wallet address
+   * @return user wins on all raffles
+   */
+  def walletWins(walletAddr: String, offset: Int, limit: Int): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
       val result = {
-        val queryResult = txCacheDAO.winnerByWalletAddr(walletAdd, offset, Math.min(limit,100))
+        val queryResult = txCacheDAO.winnerByWalletAddr(walletAddr, offset, Math.min(limit,100))
         val tickets = queryResult._1
         val totalRecords: Long = queryResult._2
 
@@ -380,6 +393,9 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     }
   }
 
+  /**
+   * @return the service fee percentage
+   */
   def servicePercent(): Action[AnyContent] = Action {
     val serviceBox = utils.getServiceBox()
     val p = serviceBox.getRegisters.get(0).getValue.asInstanceOf[Long]
@@ -390,6 +406,9 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     Ok(result.toString()).as("application/json")
   }
 
+  /**
+   * @return service information
+   */
   def info(): Action[AnyContent] = Action {
     val key = Configs.recaptchaPubKey
     var required = true

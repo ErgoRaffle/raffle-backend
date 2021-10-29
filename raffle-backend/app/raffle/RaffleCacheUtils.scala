@@ -1,7 +1,7 @@
 package raffle
 
 import dao.{RaffleCacheDAO, TxCacheDAO}
-import helpers.{Configs, Utils, connectionException, noRaffleException, parseException}
+import helpers.{Configs, Utils, connectionException, internalException, noRaffleException, parseException}
 
 import javax.inject.Inject
 import network.{Client, Explorer}
@@ -52,7 +52,7 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
       while (items != null && items.nonEmpty) {
         items.foreach(box => {
           val raffle: Raffle = Raffle(box)
-          val address = box.hcursor.downField("address").as[String].getOrElse("")
+          val address = box.hcursor.downField("address").as[String].getOrElse(throw parseException())
           val state = raffleStateByAddress(address)
           try {
             val savedRaffle = raffleCacheDAO.byTokenId(raffle.tokenId)
@@ -65,7 +65,7 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
               logger.debug("New raffle found with Token Id: " + raffle.tokenId)
               val participants = raffleUtils.raffleParticipants(raffle.tokenId)
               // TODO change the timestamp
-              val lastActivity: Long = box.hcursor.downField("settlementHeight").as[Long].getOrElse(0)
+              val lastActivity: Long = box.hcursor.downField("settlementHeight").as[Long].getOrElse(throw parseException())
               raffleCacheDAO.insert(raffle, participants, state, lastActivity, lastActivity)
             }
           }
@@ -100,7 +100,7 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
     }
     catch{
       case e: noRaffleException => logger.warn(e.getMessage)
-      case e: connectionException => logger.info(e.getMessage)
+      case e: internalException =>
       case _: parseException =>
       case e: Throwable => logger.error(utils.getStackTraceStr(e))
     }
@@ -121,8 +121,8 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
       tickets = raffleUtils.getTicketBoxes(tokenId, offset)
     }
   } catch{
-    case _:parseException =>
-    case e:Throwable => logger.error(utils.getStackTraceStr(e))
+    case _: internalException =>
+    case e: Throwable => logger.error(utils.getStackTraceStr(e))
   }
 
   def SuccessfulRaffleTxUpdate(tokenId: String): Unit = try {
@@ -145,8 +145,8 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
       tickets = raffleUtils.getTicketBoxes(tokenId, offset)
     }
   } catch{
-    case _:parseException =>
-    case e:Throwable => logger.error(utils.getStackTraceStr(e))
+    case _: internalException =>
+    case e: Throwable => logger.error(utils.getStackTraceStr(e))
   }
 
   def UnsuccessfulRaffleTxUpdate(tokenId: String): Unit = try{
@@ -175,8 +175,8 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
       tickets = raffleUtils.getTicketBoxes(tokenId, offset)
     }
   } catch{
-    case _:parseException =>
-    case e:Throwable => logger.error(utils.getStackTraceStr(e))
+    case _: internalException =>
+    case e: Throwable => logger.error(utils.getStackTraceStr(e))
   }
 
   def raffleInitialSearch(): Unit ={

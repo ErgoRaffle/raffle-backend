@@ -63,7 +63,7 @@ class RaffleCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
              ticketPrice: Long, picLinks: String, tickets: Long, participants: Long, state: Int,
              raffleToken: String, creationTime: Long, lastActivity: Long): Future[Unit] ={
     val action = raffles += RaffleCache(1, name, description, goal, raised, deadlineHeight, serviceFee,
-      charityPercent, charityAdd, ticketPrice, picLinks, tickets, participants, 0, state, raffleToken,
+      charityPercent, charityAdd, ticketPrice, picLinks, tickets, participants, redeemedTickets = 0, state, raffleToken,
       creationTime, lastActivity, isUpdating = false, completed = false)
     db.run(action).map(_ => ())
   }
@@ -71,7 +71,7 @@ class RaffleCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
   def insert(raffle: Raffle, participants: Long, state: Int, creationTime: Long, lastActivity: Long): Future[Unit] ={
     val action = raffles += RaffleCache(1, raffle.name, raffle.description, raffle.goal, raffle.raised,
       raffle.deadlineHeight, raffle.serviceFee, raffle.charityPercent, raffle.charityAddr, raffle.ticketPrice,
-      raffle.picLinks, raffle.tickets, participants, 0, state, raffle.tokenId, creationTime, lastActivity,
+      raffle.picLinks, raffle.tickets, participants, redeemedTickets = 0, state, raffle.tokenId, creationTime, lastActivity,
       isUpdating = false, completed = false)
     db.run(action).map(_ => ())
   }
@@ -80,7 +80,7 @@ class RaffleCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
                     maxRaised: Long, maxTicket: Long): Future[Unit] ={
     val action = raffles += RaffleCache(1, raffle.name, raffle.description, raffle.goal, maxRaised,
       raffle.deadlineHeight, raffle.serviceFee, raffle.charityPercent, raffle.charityAddr, raffle.ticketPrice,
-      raffle.picLinks, maxTicket, participants, 0, 0, raffle.tokenId, creationTime, lastActivity,
+      raffle.picLinks, maxTicket, participants, redeemedTickets = 0, raffleStatus.unknown.id, raffle.tokenId, creationTime, lastActivity,
       isUpdating = false, completed = false)
     db.run(action).map(_ => ())
   }
