@@ -25,10 +25,10 @@ case class DonateReq(id: Long, ticketCount: Long, fee: Long, raffleDeadline: Lon
 case class RaffleCache(id: Long, name: String, description: String, goal: Long, raised: Long,
                        deadlineHeight: Long, serviceFee: Int, charityPercent: Int, charityAddr: String,
                        ticketPrice: Long, picLinks: String, tickets: Long, participants: Long, redeemedTickets: Long,
-                       state: String, tokenId: String, creationTime: Long, lastActivity: Long, isUpdating: Boolean,
+                       state: Int, tokenId: String, creationTime: Long, lastActivity: Long, isUpdating: Boolean,
                        completed: Boolean)
 
-case class TxCache(id: Long, txId: String, tokenId: String, tokenCount: Long, txType: String, wallerAdd: String)
+case class TxCache(id: Long, txId: String, tokenId: String, tokenCount: Long, txType: Int, wallerAdd: String)
 
 case class Raffle(name: String, description: String, goal: Long, raised: Long, deadlineHeight: Long,
                   serviceFee: Int, charityPercent: Int, charityAddr: String, winnerPercent: Int, ticketPrice: Long,
@@ -71,6 +71,12 @@ object Raffle{
     catch{
       case _: Throwable => throw new parseException
     }
+  }
+  def apply(raffleCache: RaffleCache): Raffle ={
+    val winnerPercent = 100 - raffleCache.charityPercent - raffleCache.serviceFee
+    new Raffle(raffleCache.name, raffleCache.description, raffleCache.goal, raffleCache.raised, raffleCache.deadlineHeight,
+      raffleCache.serviceFee, raffleCache.charityPercent, raffleCache.charityAddr, winnerPercent, raffleCache.ticketPrice,
+      raffleCache.tickets, raffleCache.picLinks, raffleCache.tokenId)
   }
 }
 
