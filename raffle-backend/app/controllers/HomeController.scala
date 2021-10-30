@@ -16,6 +16,7 @@ import play.api.mvc._
 import javax.inject._
 import models.{CreateReq, DonateReq, Raffle, TxCache}
 
+import java.lang
 import scala.collection.mutable.{ListBuffer, Seq}
 
 
@@ -257,6 +258,11 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       val ticketCounts: Long = request.body.hcursor.downField("ticketCounts").as[Long].getOrElse(throw new Throwable("ticketCounts field must exist"))
       val captcha: String = request.body.hcursor.downField("recaptcha").as[String].getOrElse("")
       if(Configs.recaptchaKey != "not-set") utils.verifyRecaptcha(captcha)
+      try {
+        if (raffleCacheDAO.byTokenId(tokenId).state != active.id) throw new Throwable("This raffle is finished earlier")
+      } catch{
+        case _: java.util.NoSuchElementException => throw new Throwable("No raffle exist with this id")
+      }
 
       utils.validateAddress(walletAddr, "wallet")
       utils.validateTicketCounts(ticketCounts)

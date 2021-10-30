@@ -87,7 +87,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
     var raffleBox: Json = null
     var offset = 0
     var total: Int = 1
-    while (offset < total) {
+    while (offset < total && raffleBox == null) {
       try {
         boxes = explorer.getUnspentTokenBoxes(Configs.token.service, offset, 100)
         total = boxes.hcursor.downField("total").as[Int].getOrElse(0)
