@@ -1,20 +1,19 @@
 package raffle
 
 import dao.RaffleCacheDAO
-import helpers.{Configs, Utils, connectionException, explorerException, failedTxException, internalException, noRaffleException, parseException}
+import helpers.{Configs, Utils, failedTxException, internalException, noRaffleException, parseException}
 import io.circe.Json
 
 import javax.inject.Inject
-import models.{Raffle, Ticket, TxCache}
+import models.{Raffle, Ticket}
 import network.{Client, Explorer}
 import org.ergoplatform.appkit.impl.ErgoTreeContract
-import org.ergoplatform.appkit.{Address, ErgoToken, ErgoValue, InputBox}
+import org.ergoplatform.appkit.{Address, ErgoToken, InputBox}
 import play.api.Logger
 import raffle.raffleStatus.active
 
 import scala.collection.JavaConverters._
-import scala.collection.mutable.{ListBuffer, Seq}
-import scala.util.Try
+import scala.collection.mutable.Seq
 
 object raffleStatus extends Enumeration{
   type raffleStatus = Value
@@ -40,16 +39,12 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
 
   def userTickets(raffleId: String, wallerAdd: String): (List[Ticket], Long, Long) ={
     try {
-      var C = 0
-      var total = 100
+      var offset = 0
+      var tickets = getTicketBoxes(raffleId, offset)
       var selectedTickets: List[Ticket] = List[Ticket]()
       var totalTickets: Long = 0
       var totalRecords: Long = 0
-      do {
-        val response = explorer.getUnspentTokenBoxes(raffleId, C, 100)
-        val tickets: Seq[Json] = response.hcursor.downField("items").as[Seq[Json]].getOrElse(throw parseException())
-          .filter(_.hcursor.downField("assets").as[List[Json]].getOrElse(throw parseException()).size == 1)
-        total = response.hcursor.downField("total").as[Int].getOrElse(0)
+      while (tickets != null && tickets.nonEmpty) {
         for (ticketBox <- tickets) {
           val ticket = Ticket(ticketBox)
           if (ticket.walletAddress == wallerAdd) {
@@ -58,10 +53,12 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
             totalRecords += 1
           }
         }
-        C += 100
-      } while (C < total)
+        offset += 100
+        tickets = getTicketBoxes(raffleId, offset)
+      }
       (selectedTickets, totalTickets, totalRecords)
     } catch {
+      case _: internalException => throw internalException()
       case _: parseException => throw internalException()
       case e: Throwable =>
         logger.error(utils.getStackTraceStr(e))
@@ -95,9 +92,10 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
         boxes = explorer.getUnspentTokenBoxes(Configs.token.service, offset, 100)
         total = boxes.hcursor.downField("total").as[Int].getOrElse(0)
         raffleBox = boxes.hcursor.downField("items").as[Seq[Json]].getOrElse(throw parseException())
-          .filter(raffle => raffle.hcursor.downField("assets").as[Seq[Json]].getOrElse(throw parseException()).size > 1 &&
-            raffle.hcursor.downField("assets").as[Seq[Json]].getOrElse(throw parseException())(1)
-            .hcursor.downField("tokenId").as[String].getOrElse("") == tokenId).head
+          .filter(raffle => {
+            val assets = raffle.hcursor.downField("assets").as[Seq[Json]].getOrElse(throw parseException())
+            assets.size > 1 && assets(1).hcursor.downField("tokenId").as[String].getOrElse("") == tokenId
+          }).head
       } catch{
         case _: java.util.NoSuchElementException => offset += 100
         case _: parseException => throw new internalException
@@ -113,15 +111,11 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
     try {
       var result = 0
       var offset = 0
-      var response = explorer.getAllTokenBoxes(tokenId, offset, 100)
-      var items = response.hcursor.downField("items").as[List[Json]].getOrElse(throw parseException())
-        .filter(_.hcursor.downField("address").as[String].getOrElse("") == addresses.ticketAddress.toString)
-      while (items != null && items.nonEmpty) {
-        result += items.size
+      var tickets = getTicketBoxes(tokenId, offset)
+      while (tickets != null && tickets.nonEmpty) {
+        result += tickets.size
         offset += 100
-        response = explorer.getAllTokenBoxes(tokenId, offset, 100)
-        items = response.hcursor.downField("items").as[List[Json]].getOrElse(throw parseException())
-          .filter(_.hcursor.downField("address").as[String].getOrElse("") == addresses.ticketAddress.toString)
+        tickets = getTicketBoxes(tokenId, offset)
       }
       result
     } catch{
@@ -150,9 +144,10 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
   def getAllRaffleBoxes(offset: Int): List[Json] = try {
     explorer.getUnspentTokenBoxes(Configs.token.service, offset, 100)
       .hcursor.downField("items").as[List[Json]].getOrElse(throw parseException())
-      .filter(raffle => raffle.hcursor.downField("assets").as[Seq[Json]].getOrElse(throw parseException()).size > 1 &&
-        raffle.hcursor.downField("assets").as[Seq[Json]].getOrElse(null).head
-        .hcursor.downField("tokenId").as[String].getOrElse("") == Configs.token.service)
+      .filter(raffle => {
+        val assets = raffle.hcursor.downField("assets").as[Seq[Json]].getOrElse(throw parseException())
+        assets.size > 1 && assets.head.hcursor.downField("tokenId").as[String].getOrElse("") == Configs.token.service
+      })
   } catch {
     case _: parseException => throw internalException()
     case _: java.util.NoSuchElementException => throw noRaffleException()
