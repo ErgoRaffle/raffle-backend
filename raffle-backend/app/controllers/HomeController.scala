@@ -253,8 +253,8 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
    */
   def donateToId(tokenId: String): Action[Json] = Action(circe.json) { implicit request =>
     try {
-      val walletAddr: String = request.body.hcursor.downField("wallet").as[String].getOrElse(throw new Throwable("walletAddr field must exist"))
-      val ticketCounts: Long = request.body.hcursor.downField("ticketCounts").as[Long].getOrElse(throw new Throwable("erg field must exist"))
+      val walletAddr: String = request.body.hcursor.downField("walletAddr").as[String].getOrElse(throw new Throwable("walletAddr field must exist"))
+      val ticketCounts: Long = request.body.hcursor.downField("ticketCounts").as[Long].getOrElse(throw new Throwable("ticketCounts field must exist"))
       val captcha: String = request.body.hcursor.downField("recaptcha").as[String].getOrElse("")
       if(Configs.recaptchaKey != "not-set") utils.verifyRecaptcha(captcha)
 
