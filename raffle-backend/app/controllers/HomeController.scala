@@ -4,10 +4,8 @@ import dao.{CreateReqDAO, DonateReqDAO, RaffleCacheDAO, TxCacheDAO}
 import helpers.{Configs, Utils, internalException}
 import io.circe.Json
 import io.circe.generic.codec.DerivedAsObjectCodec.deriveCodec
-import io.circe.parser
 import network.{Client, Explorer}
 import raffle.{Addresses, CreateReqUtils, DonateReqUtils, RaffleUtils, raffleStatus, txType}
-import raffle.raffleStatus._
 import raffle.txType._
 import play.api.Logger
 import play.api.libs.circe.Circe
@@ -15,7 +13,6 @@ import play.api.mvc._
 
 import javax.inject._
 import models.{CreateReq, DonateReq, Raffle, TxCache}
-
 import scala.collection.mutable.{ListBuffer, Seq}
 
 
@@ -55,7 +52,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
             ("name", Json.fromString(raffle.name)),
             ("description", Json.fromString(raffle.description)),
             ("deadline", Json.fromLong(raffle.deadlineHeight)),
-            ("picture", parser.parse(raffle.picLinks).getOrElse(Json.fromValues(List[Json]()))),
+            ("picture", Json.fromString(raffle.picLinks)),
             ("erg", Json.fromLong(raffle.raised)),
             ("goal", Json.fromLong(raffle.goal)),
             ("status", Json.fromString(raffleStatus.apply(raffle.state).toString)),
@@ -91,7 +88,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
             ("description", Json.fromString(raffle.description)),
             ("deadline", Json.fromLong(raffle.deadlineHeight)),
             ("goal", Json.fromLong(raffle.goal)),
-            ("picture", parser.parse(raffle.picLinks).getOrElse(Json.fromValues(List[Json]()))),
+            ("picture", Json.fromString(raffle.picLinks)),
             ("charity", Json.fromString(raffle.charityAddr)),
             ("percent", Json.fromFields(List(
               ("charity", Json.fromLong(raffle.charityPercent)),
@@ -164,8 +161,8 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       val walletAddr: String = request.body.hcursor.downField("wallet").as[String].getOrElse(throw new Throwable("wallet field must exist"))
       val ticketPrice: Long = request.body.hcursor.downField("ticketPrice").as[Long].getOrElse(throw new Throwable("ticketPrice field must exist"))
       val captcha: String = request.body.hcursor.downField("recaptcha").as[String].getOrElse("")
+      val picLinks: List[String] = request.body.hcursor.downField("pictures").as[List[String]].getOrElse(List())
       if(Configs.recaptchaKey != "not-set") utils.verifyRecaptcha(captcha)
-      // TODO: Add pictures
 
       if(name.length > 250) throw new Throwable("Name size limit is 250 characters")
       if(description.length > 1000) throw new Throwable("Description size limit is 250 characters")
@@ -179,7 +176,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       val servicePercent = serviceBox.getRegisters.get(0).getValue.asInstanceOf[Long]
       utils.validateCharityPercent(charityPercent, servicePercent)
 
-      val createResult = createReqUtils.CreateRaffleProxyAddress(walletAddr, charityPercent, name, description, deadlineHeight + client.getHeight, charityAddr, goal, ticketPrice)
+      val createResult = createReqUtils.CreateRaffleProxyAddress(walletAddr, charityPercent, name, description, deadlineHeight + client.getHeight, charityAddr, goal, ticketPrice, picLinks)
       val paymentAddress = createResult._1
       val requestId = createResult._2
       val amount = Configs.fee * 4
@@ -333,7 +330,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
             ("name", Json.fromString(raffle.name)),
             ("description", Json.fromString(raffle.description)),
             ("deadline", Json.fromLong(raffle.deadlineHeight)),
-            ("picture", parser.parse(raffle.picLinks).getOrElse(Json.fromValues(List[Json]()))),
+            ("picture", Json.fromString(raffle.picLinks)),
             ("erg", Json.fromLong(raffle.raised)),
             ("goal", Json.fromLong(raffle.goal)),
             ("status", Json.fromString(raffleStatus.apply(raffle.state).toString)),
@@ -372,7 +369,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
             ("name", Json.fromString(raffle.name)),
             ("description", Json.fromString(raffle.description)),
             ("deadline", Json.fromLong(raffle.deadlineHeight)),
-            ("picture", parser.parse(raffle.picLinks).getOrElse(Json.fromValues(List[Json]()))),
+            ("picture", Json.fromString(raffle.picLinks)),
             ("erg", Json.fromLong(raffle.raised)),
             ("goal", Json.fromLong(raffle.goal)),
             ("tickets", Json.fromLong(ticket.tokenCount)),

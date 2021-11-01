@@ -29,14 +29,15 @@ trait CreateReqComponent {
     def paymentAddress = column[String]("PAYMENT_ADDR")
     def createTxId = column[String]("CREATE_TX_ID")
     def mergeTxId = column[String]("MERGE_TX_ID")
+    def picLinks = column[String]("PIC_LINKS")
 
     def timeStamp = column[String]("TIME_STAMP")
     def ttl = column[Long]("TTL")
     def deleted = column[Boolean]("DELETED")
 
     def * = (id, name, description, goal, deadlineHeight, charityPercent, charityAddr,
-      ticketPrice, state, walletAddress, paymentAddress,
-      createTxId.?, mergeTxId.?, timeStamp, ttl, deleted) <> (CreateReq.tupled, CreateReq.unapply)
+      ticketPrice, state, walletAddress, paymentAddress, createTxId.?, mergeTxId.?, picLinks,
+      timeStamp, ttl, deleted) <> (CreateReq.tupled, CreateReq.unapply)
   }
 
 }
@@ -56,10 +57,10 @@ class CreateReqDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvi
    */
   def insert(name: String, description: String, goal: Long, deadlineHeight: Long, charityPercent: Int,
              charityAddr: String, ticketPrice: Long, state: Int, walletAddress: String, paymentAddress: String,
-             createTxId: Option[String],  mergeTxId: Option[String], timeStamp: String, ttl: Long): CreateReq ={
+             createTxId: Option[String],  mergeTxId: Option[String], picLinks: String, timeStamp: String, ttl: Long): CreateReq ={
     val insertQuery = requests returning requests.map(_.id) into ((item, id) => item.copy(id = id))
     val action = insertQuery += CreateReq(1, name, description, goal, deadlineHeight, charityPercent, charityAddr,
-      ticketPrice, state, walletAddress, paymentAddress, createTxId, mergeTxId, timeStamp, ttl, deleted = false)
+      ticketPrice, state, walletAddress, paymentAddress, createTxId, mergeTxId, picLinks, timeStamp, ttl, deleted = false)
     Await.result(db.run(action), Duration.Inf)
   }
 

@@ -5,6 +5,7 @@ import java.time.LocalDateTime
 import dao.CreateReqDAO
 import helpers.{Configs, Utils, connectionException, failedTxException, paymentNotCoveredException, proveException}
 import io.circe.{Json, parser}
+import io.circe.syntax._
 import network.{Client, Explorer}
 import javax.inject.Inject
 import models.CreateReq
@@ -21,11 +22,12 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
   private val logger: Logger = Logger(this.getClass)
 
   def CreateRaffleProxyAddress(pk: String, charityPercent: Int, name: String, description: String, deadlineHeight: Long,
-                               charityAddr: String, goal: Long, ticketPrice: Long): (String, Long) = {
+                               charityAddr: String, goal: Long, ticketPrice: Long, picLinks: List[String]): (String, Long) = {
     try {
       val paymentAddress = addresses.getRaffleCreateProxyContract(pk, charityPercent, name, description, deadlineHeight, charityAddr, goal, ticketPrice)
+      val picLinksJson: String = picLinks.asJson.toString
       val req: CreateReq = createReqDAO.insert(name, description, goal, deadlineHeight, charityPercent, charityAddr, ticketPrice, 0, pk, paymentAddress,
-        null, null, LocalDateTime.now().toString, Configs.creationDelay + utils.currentTime)
+        null, null, picLinksJson, LocalDateTime.now().toString, Configs.creationDelay + utils.currentTime)
       (paymentAddress, req.id)
     }
     catch {
@@ -59,7 +61,10 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
       val serviceFee = serviceBox.getRegisters.get(0).getValue.asInstanceOf[Long]
       val r4 = utils.longListToErgoValue(Array(req.charityPercent, serviceFee, req.ticketPrice, req.goal, req.deadlineHeight, 0L))
       val r5 = ErgoValue.of(new ErgoTreeContract(Address.create(req.charityAddr).getErgoAddress.script).getErgoTree.bytes)
-      val r6 = ErgoValue.of(Seq(req.name.getBytes("utf-8"), req.description.getBytes("utf-8"), serviceBox.getId.getBytes).map(item => {
+      var r6SeqByte: Seq[Array[Byte]] = Seq(req.name.getBytes("utf-8"), req.description.getBytes("utf-8"))
+      parser.parse(req.picLinks).getOrElse(null).as[List[String]].getOrElse(List())
+        .foreach(link => r6SeqByte = r6SeqByte :+ (link.getBytes("utf8")) )
+      val r6 = ErgoValue.of(r6SeqByte.map(item => {
         ErgoValue.of(IndexedSeq(item: _*).toArray)
       }).map(item => item.getValue).toArray, ErgoType.collType(ErgoType.byteType()))
       val r7 = ErgoValue.of(serviceBox.getRegisters.get(1).getValue.asInstanceOf[Coll[Byte]].toArray.clone())
