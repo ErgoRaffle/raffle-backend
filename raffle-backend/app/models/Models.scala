@@ -65,8 +65,8 @@ object Raffle{
       val picLinks: String = {
         var Links: List[String] = List()
         for(i <- 2 until strListByte.size){
-          val url = new String(strListByte(i).toArray, StandardCharsets.UTF_8)
-          if(url.startsWith(Configs.ipfsPrefix)) url.replace(Configs.ipfsPrefix, Configs.ipfsResolver)
+          var url = new String(strListByte(i).toArray, StandardCharsets.UTF_8)
+          if(url.startsWith(Configs.ipfsPrefix)) url = url.replace(Configs.ipfsPrefix, Configs.ipfsResolver)
           Links = Links :+ url
         }
         Links.asJson.toString()
