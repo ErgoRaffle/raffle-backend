@@ -7,6 +7,7 @@ import io.circe.generic.codec.DerivedAsObjectCodec.deriveCodec
 import network.{Client, Explorer}
 import raffle.{Addresses, CreateReqUtils, DonateReqUtils, RaffleUtils, raffleStatus, txType}
 import raffle.txType._
+import raffle.raffleStatus._
 import play.api.Logger
 import play.api.libs.circe.Circe
 import play.api.mvc._
