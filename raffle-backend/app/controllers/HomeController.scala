@@ -399,19 +399,6 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
   }
 
   /**
-   * @return the service fee percentage
-   */
-  def servicePercent(): Action[AnyContent] = Action {
-    val serviceBox = utils.getServiceBox()
-    val p = serviceBox.getRegisters.get(0).getValue.asInstanceOf[Long]
-
-    val result = Json.fromFields(List(
-      ("z", Json.fromLong(p))
-    ))
-    Ok(result.toString()).as("application/json")
-  }
-
-  /**
    * @return service information
    */
   def info(): Action[AnyContent] = Action {
@@ -419,11 +406,14 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     var required = true
     if(key == "not-set") required = false
     val currentHeight = client.getHeight
+    val serviceBox = utils.getServiceBox()
+    val serviceFee = serviceBox.getRegisters.get(0).getValue.asInstanceOf[Long]
 
     val result = Json.fromFields(List(
       ("pubKey", Json.fromString(key)),
       ("required", Json.fromBoolean(required)),
-      ("height", Json.fromLong(currentHeight))
+      ("height", Json.fromLong(currentHeight)),
+      ("serviceFee", Json.fromLong(serviceFee))
     ))
     Ok(result.toString()).as("application/json")
   }
