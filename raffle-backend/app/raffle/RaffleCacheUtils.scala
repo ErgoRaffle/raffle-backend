@@ -35,6 +35,8 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
       activeRaffleTxUpdate(raffle.tokenId)
       if(client.getHeight > raffle.deadlineHeight && raffle.raised >= raffle.goal)
         raffleCacheDAO.updateStateById(savedRaffle.id, succeed.id)
+      else if(client.getHeight > raffle.deadlineHeight && raffle.raised < raffle.goal)
+        raffleCacheDAO.updateStateById(savedRaffle.id, failed.id)
     }
     if (state == failed.id && savedRaffle.tickets - savedRaffle.redeemedTickets != raffle.tickets) {
       UnsuccessfulRaffleTxUpdate(raffle.tokenId)
