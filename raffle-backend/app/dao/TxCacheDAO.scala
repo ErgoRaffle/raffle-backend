@@ -58,21 +58,17 @@ class TxCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvide
    */
   def byId(id: Long): TxCache = Await.result(db.run(Txs.filter(tx => tx.id === id).result.head), Duration.Inf)
 
-  def byTokenId(tokenId: String, offset: Int, limit: Int): (Seq[TxCache], Seq[TxCache], Int, Int) = {
+  def byTokenId(tokenId: String, offset: Int, limit: Int): (Seq[TxCache], Int) = {
     val types = Seq(winner.id, charity.id)
     val q = for {
-      successTxsQ <- DBIO.successful(Txs.filter(tx => tx.tokenId === tokenId && (tx.txType inSet types)).sortBy(_.txType.asc))
+      successTxsQ <- DBIO.successful(Txs.filter(tx => tx.tokenId === tokenId && (tx.txType inSet types)))
       lengthTotalSuccessResult <- successTxsQ.length.result
-      limitSuccessResult <- successTxsQ.drop(offset).take(limit).result
-      otherQuery <- DBIO.successful(if (lengthTotalSuccessResult != 0) Txs.filter(tx => tx.tokenId === tokenId && !(tx.txType inSet types))
+      allTxQuery <- DBIO.successful(if (lengthTotalSuccessResult != 0) Txs.filter(tx => tx.tokenId === tokenId).sortBy(_.txType.asc)
                                     else Txs.filter(tx => tx.tokenId === tokenId && tx.txType === refund.id))
-      // In case of success raffle we have just 2 type Winner and Charity so for set offset in this case Math.max(0, offset - lengthTotalSuccessResult) used
-      setLimitOffset <- if (lengthTotalSuccessResult != 0) otherQuery.drop(Math.max(0, offset - lengthTotalSuccessResult)).take(limit).result
-                        else otherQuery.drop(offset).take(limit).result
-      total <- (otherQuery.length + lengthTotalSuccessResult).result
+      lengthTotalResult <- allTxQuery.length.result
+      limitTotalResult <- allTxQuery.drop(offset).take(limit).result
     }
-    // TODO: After fixed fake charityTX should concat limitSuccessResult and setLimitOffset also remove lengthTotalSuccessResult
-    yield (limitSuccessResult, setLimitOffset, lengthTotalSuccessResult, total)
+    yield (limitTotalResult, lengthTotalResult)
     Await.result(db.run(q), Duration.Inf)
   }
 

@@ -128,26 +128,37 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
   }
 
   def SuccessfulRaffleTxUpdate(tokenId: String): Unit = try {
-    // Tickets
-    var offset = 0
-    var tickets = raffleUtils.getTicketBoxes(tokenId, offset)
-    while (tickets != null && tickets.nonEmpty) {
-      tickets.foreach(ticketBox => {
-        val ticket = Ticket(ticketBox)
-        try txCacheDAO.byTxId(ticket.txId)
-        catch {
-          case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, txType.ticket.id, ticket.walletAddress)
+    val winnerRaffleBox = raffleUtils.getWinnerBox(tokenId)
+    if(winnerRaffleBox != null){
+      val charityTx: String = winnerRaffleBox.hcursor.downField("transactionId").as[String].getOrElse(throw parseException())
+      val raffleInfo = Raffle(winnerRaffleBox)
+      // Adding Charity Transaction
+      txCacheDAO.insert(charityTx, tokenId, tokenCount = 0, txType.charity.id, raffleInfo.charityAddr)
+      val spendTxId: String = winnerRaffleBox.hcursor.downField("spentTransactionId").as[String].getOrElse("")
+      if (spendTxId != "") {
+        var offset = 0
+        var tickets = raffleUtils.getTicketBoxes(tokenId, offset)
+        while (tickets != null && tickets.nonEmpty) {
+          tickets.foreach(ticketBox => {
+            val ticket = Ticket(ticketBox)
+            // Updating Tickets
+            try txCacheDAO.byTxId(ticket.txId)
+            catch {case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, txType.ticket.id, ticket.walletAddress) }
+            val ticketSpendTxId: String = ticketBox.hcursor.downField("spentTransactionId").as[String].getOrElse("")
+//            println(s"ticketSpendTx: $ticketSpendTxId, winnerSpendTx: $spendTxId, ${spendTxId == ticketSpendTxId}")
+            if (spendTxId == ticketSpendTxId) {
+              // Adding Winner Transaction
+              txCacheDAO.insert(ticketSpendTxId, tokenId, ticket.tokenCount, txType.winner.id, ticket.walletAddress)
+            }
+          })
+          offset += 100
+          tickets = raffleUtils.getTicketBoxes(tokenId, offset)
         }
-        // Winner Reward
-        val spendTxId: String = ticketBox.hcursor.downField("spentTransactionId").as[String].getOrElse("")
-        if (spendTxId != "")
-          txCacheDAO.insert(spendTxId, tokenId, ticket.tokenCount, txType.winner.id, ticket.walletAddress)
-      })
-      offset += 100
-      tickets = raffleUtils.getTicketBoxes(tokenId, offset)
+      }
     }
   } catch{
     case _: internalException =>
+    case e: parseException => logger.warn(e.getMessage)
     case e: Throwable => logger.error(utils.getStackTraceStr(e))
   }
 

@@ -294,12 +294,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       val result = {
         val txs = txCacheDAO.byTokenId(tokenId, offset, limit)
         var tmpTxs: scala.Seq[TxCache] = Seq.empty
-        // TODO: condition (Add charityTx) is a fake tx should be remove in production
-        if (txs._3 != 0 && txs._1.nonEmpty) {
-          val charityTx = txs._2.head.copy(txType = charity.id)
-          tmpTxs = txs._1 :+ charityTx
-        }
-        tmpTxs ++= txs._2
+        tmpTxs ++= txs._1
         val transactions = tmpTxs.take(limit).map(tx => {
           Json.fromFields(List(
             ("id", Json.fromString(tx.txId)),
@@ -311,7 +306,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
         })
         Json.fromFields(List(
           ("items", Json.fromValues(transactions.toList)),
-          ("total", Json.fromInt(txs._4))
+          ("total", Json.fromInt(txs._2))
         ))
       }
       Ok(result.toString()).as("application/json")
