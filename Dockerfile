@@ -1,16 +1,7 @@
-FROM node:12.14 as builder-front
-
-WORKDIR /usr/src/app
-COPY ./raffle-frontend/package.json ./raffle-frontend/package-lock.json ./
-RUN npm install
-COPY ./raffle-frontend ./
-RUN npm run build
-
 FROM mozilla/sbt:8u181_1.2.7 as builder
 
 ADD ["./raffle-backend", "/raffle/raffle-backend"]
 WORKDIR /raffle/raffle-backend
-COPY --from=builder-front /usr/src/app/build/ ./public/
 RUN sbt assembly
 RUN mv `find . -name ErgoRaffle-*.jar` /ergo-raffle.jar
 CMD ["java", "-jar", "/ergo-raffle.jar"]
