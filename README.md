@@ -23,7 +23,7 @@ Run the `raffle-backend`
 $ java -Dconfig.file=path/to/config -jar ErgoRaffle-<ERGO_RAFFLE_VERSION>.jar
 ```
 
-Also the front instructions is [(here)](../raffle-frontend/README.md)
+Also the `raffle-frontend` instructions is [(here)](https://github.com/ErgoRaffle/raffle-frontend/blob/master/README.md)
 
 ## Docker quick start
 To use docker, follow instructions:
