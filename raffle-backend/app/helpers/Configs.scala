@@ -11,6 +11,9 @@ object Configs extends ConfigHelper {
   lazy val explorerUrl: String = readKey("explorer.url").replaceAll("/$", "")
   lazy val explorerFront: String = readKey("explorer.front").replaceAll("/$", "")
 
+  lazy val ipfsPrefix: String = readKey("ipfsPrefix").replaceAll("/$", "")
+  lazy val ipfsResolver: String = readKey("ipfsResolver").replaceAll("/$", "")
+
   lazy val fee: Long = readKey("fee").toLong
   lazy val minBoxErg: Long = readKey("minBoxErg").toLong
   lazy val serviceOwner: Address = Address.create(readKey("service.owner"))

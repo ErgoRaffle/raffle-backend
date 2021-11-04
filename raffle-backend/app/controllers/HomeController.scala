@@ -2,13 +2,12 @@ package controllers
 
 import dao.{CreateReqDAO, DonateReqDAO, RaffleCacheDAO, TxCacheDAO}
 import helpers.{Configs, Utils, internalException}
-import io.circe.Json
+import io.circe.{Json, parser}
 import io.circe.generic.codec.DerivedAsObjectCodec.deriveCodec
-import io.circe.parser
 import network.{Client, Explorer}
 import raffle.{Addresses, CreateReqUtils, DonateReqUtils, RaffleUtils, raffleStatus, txType}
-import raffle.raffleStatus._
 import raffle.txType._
+import raffle.raffleStatus._
 import play.api.Logger
 import play.api.libs.circe.Circe
 import play.api.mvc._
@@ -165,8 +164,8 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       val walletAddr: String = request.body.hcursor.downField("wallet").as[String].getOrElse(throw new Throwable("wallet field must exist"))
       val ticketPrice: Long = request.body.hcursor.downField("ticketPrice").as[Long].getOrElse(throw new Throwable("ticketPrice field must exist"))
       val captcha: String = request.body.hcursor.downField("recaptcha").as[String].getOrElse("")
+      val picLinks: List[String] = request.body.hcursor.downField("picture").as[Seq[String]].getOrElse(throw new Throwable("picture is required")).toList
       if(Configs.recaptchaKey != "not-set") utils.verifyRecaptcha(captcha)
-      // TODO: Add pictures
 
       if(name.length > 250) throw new Throwable("Name size limit is 250 characters")
       if(description.length > 1000) throw new Throwable("Description size limit is 250 characters")
@@ -180,7 +179,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       val servicePercent = serviceBox.getRegisters.get(0).getValue.asInstanceOf[Long]
       utils.validateCharityPercent(charityPercent, servicePercent)
 
-      val createResult = createReqUtils.CreateRaffleProxyAddress(walletAddr, charityPercent, name, description, deadlineHeight + client.getHeight, charityAddr, goal, ticketPrice)
+      val createResult = createReqUtils.CreateRaffleProxyAddress(walletAddr, charityPercent, name, description, deadlineHeight + client.getHeight, charityAddr, goal, ticketPrice, picLinks)
       val paymentAddress = createResult._1
       val requestId = createResult._2
       val amount = Configs.fee * 4

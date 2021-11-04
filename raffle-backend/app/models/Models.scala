@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets
 
 import helpers.{Configs, parseException}
 import io.circe.Json
+import io.circe.syntax._
 import org.ergoplatform.appkit.ErgoValue
 import sigmastate.serialization.ErgoTreeSerializer
 import special.collection.Coll
@@ -11,10 +12,9 @@ import special.collection.Coll
 import scala.collection.mutable.Seq
 
 
-case class CreateReq(id: Long, name: String, description: String, goal: Long,
-                     deadlineHeight: Long, charityPercent: Int, charityAddr: String,
-                     ticketPrice: Long, state: Int, walletAddress: String, paymentAddress: String,
-                     createTxId: Option[String],  mergeTxId: Option[String], timeStamp: String,
+case class CreateReq(id: Long, name: String, description: String, goal: Long, deadlineHeight: Long, charityPercent: Int,
+                     charityAddr: String, ticketPrice: Long, state: Int, walletAddress: String, paymentAddress: String,
+                     createTxId: Option[String],  mergeTxId: Option[String], picLinks: String, timeStamp: String,
                      ttl: Long, deleted: Boolean)
 
 
@@ -62,8 +62,15 @@ object Raffle{
         .getValue.asInstanceOf[Coll[Coll[Byte]]].toArray
       val name: String = new String(strListByte(0).toArray, StandardCharsets.UTF_8)
       val description: String = new String(strListByte(1).toArray, StandardCharsets.UTF_8)
-      // TODO PICS
-      val picLinks = "[]"
+      val picLinks: String = {
+        var Links: List[String] = List()
+        for(i <- 2 until strListByte.size){
+          var url = new String(strListByte(i).toArray, StandardCharsets.UTF_8)
+          if(url.startsWith(Configs.ipfsPrefix)) url = url.replace(Configs.ipfsPrefix, Configs.ipfsResolver)
+          Links = Links :+ url
+        }
+        Links.asJson.toString()
+      }
 
       new Raffle(name, description, goal, totalRaised, deadlineHeight, serviceFee.toInt, charityPercent.toInt,
         charityAddress, winnerPercent.toInt, ticketPrice, totalSoldTicket, picLinks, tokenId)
