@@ -67,7 +67,7 @@ object Raffle{
         for(i <- 2 until strListByte.size){
           var url = new String(strListByte(i).toArray, StandardCharsets.UTF_8)
           if(url.startsWith(Configs.ipfsPrefix)) url = url.replace(Configs.ipfsPrefix, Configs.ipfsResolver)
-          Links = Links :+ url
+          if(url.contains("://")) Links = Links :+ url
         }
         Links.asJson.toString()
       }

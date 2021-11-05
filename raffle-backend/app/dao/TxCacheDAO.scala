@@ -3,6 +3,7 @@ package dao
 import javax.inject.{Inject, Singleton}
 import models.TxCache
 import play.api.db.slick.{DatabaseConfigProvider, HasDatabaseConfigProvider}
+import raffle.raffleStatus.succeed
 import slick.jdbc.JdbcProfile
 
 import scala.concurrent.{Await, ExecutionContext, Future}
@@ -58,12 +59,9 @@ class TxCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvide
    */
   def byId(id: Long): TxCache = Await.result(db.run(Txs.filter(tx => tx.id === id).result.head), Duration.Inf)
 
-  def byTokenId(tokenId: String, offset: Int, limit: Int): (Seq[TxCache], Int) = {
-    val types = Seq(winner.id, charity.id)
+  def byTokenId(tokenId: String, offset: Int, limit: Int, raffleState: Int): (Seq[TxCache], Int) = {
     val q = for {
-      successTxsQ <- DBIO.successful(Txs.filter(tx => tx.tokenId === tokenId && (tx.txType inSet types)))
-      lengthTotalSuccessResult <- successTxsQ.length.result
-      allTxQuery <- DBIO.successful(if (lengthTotalSuccessResult != 0) Txs.filter(tx => tx.tokenId === tokenId).sortBy(_.txType.asc)
+      allTxQuery <- DBIO.successful(if (raffleState == succeed.id) Txs.filter(tx => tx.tokenId === tokenId).sortBy(_.txType.asc)
                                     else Txs.filter(tx => tx.tokenId === tokenId && tx.txType === refund.id))
       lengthTotalResult <- allTxQuery.length.result
       limitTotalResult <- allTxQuery.drop(offset).take(limit).result

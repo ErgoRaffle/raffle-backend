@@ -145,7 +145,6 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
             try txCacheDAO.byTxId(ticket.txId)
             catch {case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, txType.ticket.id, ticket.walletAddress) }
             val ticketSpendTxId: String = ticketBox.hcursor.downField("spentTransactionId").as[String].getOrElse("")
-//            println(s"ticketSpendTx: $ticketSpendTxId, winnerSpendTx: $spendTxId, ${spendTxId == ticketSpendTxId}")
             if (spendTxId == ticketSpendTxId) {
               // Adding Winner Transaction
               txCacheDAO.insert(ticketSpendTxId, tokenId, ticket.tokenCount, txType.winner.id, ticket.walletAddress)

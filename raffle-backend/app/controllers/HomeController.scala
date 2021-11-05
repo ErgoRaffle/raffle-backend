@@ -292,7 +292,8 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
   def raffleTransactions(tokenId: String, offset: Int, limit: Int): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
       val result = {
-        val txs = txCacheDAO.byTokenId(tokenId, offset, limit)
+        val raffleState = raffleCacheDAO.byTokenId(tokenId).state
+        val txs = txCacheDAO.byTokenId(tokenId, offset, limit, raffleState)
         var tmpTxs: scala.Seq[TxCache] = Seq.empty
         tmpTxs ++= txs._1
         val transactions = tmpTxs.take(limit).map(tx => {
