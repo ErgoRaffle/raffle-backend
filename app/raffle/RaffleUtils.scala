@@ -156,6 +156,28 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
       throw internalException()
   }
 
+  def getWinnerBox(tokenId: String): Json = {
+    var boxes: Json = null
+    var winnerBox: Json = null
+    var offset = 0
+    var total: Int = 1
+    while (offset < total && winnerBox == null) {
+      try {
+        boxes = explorer.getAllTokenBoxes(tokenId, offset, 100)
+        total = boxes.hcursor.downField("total").as[Int].getOrElse(0)
+        winnerBox = boxes.hcursor.downField("items").as[Seq[Json]].getOrElse(throw parseException())
+          .filter(_.hcursor.downField("address").as[String].getOrElse("") == addresses.raffleWinnerAddress.toString).head
+      } catch{
+        case _: java.util.NoSuchElementException => offset += 100
+        case _: parseException => throw new internalException
+        case e: Throwable =>
+          logger.error(utils.getStackTraceStr(e))
+          throw new internalException
+      }
+    }
+    winnerBox
+  }
+
   def refundBoxes(boxes: List[InputBox], address: Address): String = {
     try {
       client.getClient.execute(ctx => {

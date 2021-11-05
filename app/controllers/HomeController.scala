@@ -292,14 +292,10 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
   def raffleTransactions(tokenId: String, offset: Int, limit: Int): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
       val result = {
-        val txs = txCacheDAO.byTokenId(tokenId, offset, limit)
+        val raffleState = raffleCacheDAO.byTokenId(tokenId).state
+        val txs = txCacheDAO.byTokenId(tokenId, offset, limit, raffleState)
         var tmpTxs: scala.Seq[TxCache] = Seq.empty
-        // TODO: condition (Add charityTx) is a fake tx should be remove in production
-        if (txs._3 != 0 && txs._1.nonEmpty) {
-          val charityTx = txs._2.head.copy(txType = charity.id)
-          tmpTxs = txs._1 :+ charityTx
-        }
-        tmpTxs ++= txs._2
+        tmpTxs ++= txs._1
         val transactions = tmpTxs.take(limit).map(tx => {
           Json.fromFields(List(
             ("id", Json.fromString(tx.txId)),
@@ -311,7 +307,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
         })
         Json.fromFields(List(
           ("items", Json.fromValues(transactions.toList)),
-          ("total", Json.fromInt(txs._4))
+          ("total", Json.fromInt(txs._2))
         ))
       }
       Ok(result.toString()).as("application/json")
@@ -399,19 +395,6 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
   }
 
   /**
-   * @return the service fee percentage
-   */
-  def servicePercent(): Action[AnyContent] = Action {
-    val serviceBox = utils.getServiceBox()
-    val p = serviceBox.getRegisters.get(0).getValue.asInstanceOf[Long]
-
-    val result = Json.fromFields(List(
-      ("z", Json.fromLong(p))
-    ))
-    Ok(result.toString()).as("application/json")
-  }
-
-  /**
    * @return service information
    */
   def info(): Action[AnyContent] = Action {
@@ -419,11 +402,14 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
     var required = true
     if(key == "not-set") required = false
     val currentHeight = client.getHeight
+    val serviceBox = utils.getServiceBox()
+    val serviceFee = serviceBox.getRegisters.get(0).getValue.asInstanceOf[Long]
 
     val result = Json.fromFields(List(
       ("pubKey", Json.fromString(key)),
       ("required", Json.fromBoolean(required)),
-      ("height", Json.fromLong(currentHeight))
+      ("height", Json.fromLong(currentHeight)),
+      ("serviceFee", Json.fromLong(serviceFee))
     ))
     Ok(result.toString()).as("application/json")
   }
