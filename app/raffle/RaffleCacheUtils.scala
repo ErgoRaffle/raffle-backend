@@ -28,11 +28,13 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
     val state = raffleStateByAddress(address)
     val raffle = Raffle(raffleBox)
     if (state != savedRaffle.state) raffleCacheDAO.updateStateById(savedRaffle.id, state)
-    if (state == active.id && raffle.tickets != savedRaffle.tickets) {
-      val participants: Long = raffleUtils.raffleParticipants(raffle.tokenId)
-      val lastActivity: Long = raffleBox.hcursor.downField("settlementHeight").as[Long].getOrElse(0)
-      raffleCacheDAO.updateActivity(savedRaffle.id, raffle.raised, raffle.tickets, participants, lastActivity)
-      activeRaffleTxUpdate(raffle.tokenId)
+    if (state == active.id) {
+      if(raffle.tickets != savedRaffle.tickets) {
+        val participants: Long = raffleUtils.raffleParticipants(raffle.tokenId)
+        val lastActivity: Long = raffleBox.hcursor.downField("settlementHeight").as[Long].getOrElse(0)
+        raffleCacheDAO.updateActivity(savedRaffle.id, raffle.raised, raffle.tickets, participants, lastActivity)
+        activeRaffleTxUpdate(raffle.tokenId)
+      }
       if(client.getHeight > raffle.deadlineHeight && raffle.raised >= raffle.goal)
         raffleCacheDAO.updateStateById(savedRaffle.id, succeed.id)
       else if(client.getHeight > raffle.deadlineHeight && raffle.raised < raffle.goal)
