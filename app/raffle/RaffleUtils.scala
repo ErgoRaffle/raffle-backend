@@ -206,12 +206,12 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
         else txId.replaceAll("\"", "")
       })
     } catch {
-      case e:failedTxException =>
+      case e: failedTxException =>
         logger.warn(e.getMessage)
         throw failedTxException()
       case e:Throwable =>
         logger.error(utils.getStackTraceStr(e))
-        throw new Throwable("Something is wrong on refunding")
+        throw new Throwable("refunding failed")
     }
   }
 

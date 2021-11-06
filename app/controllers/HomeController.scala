@@ -14,6 +14,7 @@ import play.api.mvc._
 
 import javax.inject._
 import models.{CreateReq, DonateReq, Raffle, TxCache}
+import org.ergoplatform.appkit.Address
 
 import java.lang
 import scala.collection.mutable.{ListBuffer, Seq}
@@ -391,6 +392,34 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       case e: Throwable =>
         logger.error(utils.getStackTraceStr(e))
         exception(e)
+    }
+  }
+
+  /**
+   * creates a refund transaction with the input data
+   * @return refund txId
+   */
+  def refundPayments(): Action[Json] = Action(circe.json) { implicit request =>
+    try {
+      val walletAddress: String = request.body.hcursor.downField("wallet").as[String].getOrElse(throw new Throwable("wallet field must exist"))
+      val paymentAddress: String = request.body.hcursor.downField("payment").as[String].getOrElse(throw new Throwable("payment field must exist"))
+      val captcha: String = request.body.hcursor.downField("recaptcha").as[String].getOrElse("")
+      if(Configs.recaptchaKey != "not-set") utils.verifyRecaptcha(captcha)
+
+      val result = {
+        val boxes = client.getAllUnspentBox(Address.create(paymentAddress))
+        if (boxes.nonEmpty) {
+          val txId = raffleUtils.refundBoxes(boxes, Address.create(walletAddress))
+          Json.fromFields(List(
+            ("success", Json.fromBoolean(true)),
+            ("txId", Json.fromString(txId))
+          ))
+        }
+        else throw new Throwable("There is no box available for this payment address")
+      }
+      Ok(result.toString()).as("application/json")
+    } catch{
+      case e: Throwable => exception(e)
     }
   }
 
