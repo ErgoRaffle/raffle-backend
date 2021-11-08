@@ -69,11 +69,8 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
   def raffleByTokenId(tokenId: String): (Raffle, Long, String) = try{
     val savedRaffle = raffleCacheDAO.byTokenId(tokenId)
     var raffle: Raffle = null
-    if(savedRaffle.state == active.id) {
-      raffle = Raffle(getRaffleBoxByTokenId(tokenId))
-      val savedRaffle = raffleCacheDAO.byTokenId(tokenId)
-      raffleCacheDAO.updateRaised(savedRaffle.id, raffle.raised, raffle.tickets)
-    } else raffle = Raffle(savedRaffle)
+    if(savedRaffle.state == active.id) raffle = Raffle(getRaffleBoxByTokenId(tokenId))
+    else raffle = Raffle(savedRaffle)
     (raffle, savedRaffle.participants, raffleStatus.apply(savedRaffle.state).toString)
   } catch{
     case _: java.util.NoSuchElementException => throw noRaffleException()
@@ -206,12 +203,12 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
         else txId.replaceAll("\"", "")
       })
     } catch {
-      case e:failedTxException =>
+      case e: failedTxException =>
         logger.warn(e.getMessage)
         throw failedTxException()
       case e:Throwable =>
         logger.error(utils.getStackTraceStr(e))
-        throw new Throwable("Something is wrong on refunding")
+        throw new Throwable("refunding failed")
     }
   }
 
