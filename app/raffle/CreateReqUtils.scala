@@ -43,8 +43,8 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
       val txB = ctx.newTxBuilder()
       val prover = ctx.newProverBuilder()
         .build()
-      val paymentBoxList = client.getCoveringBoxesFor(Address.create(req.paymentAddress), Configs.fee*4)
-      if(!paymentBoxList.isCovered) throw paymentNotCoveredException(s"Creation payment for request ${req.id} not covered the fee, request state id ${req.state} and request tx is ${req.createTxId}")
+      val paymentBoxList = utils.getCoveringBoxesWithMempool(req.paymentAddress, Configs.fee*4)
+      if(!paymentBoxList._2) throw paymentNotCoveredException(s"Creation payment for request ${req.id} not covered the fee, request state id ${req.state} and request tx is ${req.createTxId}")
 
       val outputServiceBox = txB.outBoxBuilder()
         .value(serviceBox.getValue)
@@ -83,11 +83,11 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         .registers(tokenName, tokenName, ErgoValue.of("0".getBytes("utf-8")))
         .build()
 
-      var change = paymentBoxList.getCoveredAmount - Configs.fee*4
+      var change = paymentBoxList._3 - Configs.fee*4
       var fee = Configs.fee
       if(change <= Configs.minBoxErg) fee += change
 
-      val inputBoxList = Seq(serviceBox) ++ paymentBoxList.getBoxes.asScala
+      val inputBoxList = Seq(serviceBox) ++ paymentBoxList._1
       val raffleCreateTx = txB.boxesToSpend(inputBoxList.asJava)
         .fee(fee)
         .outputs(outputServiceBox, outputRaffleBox, outputTokenIssueBox)
@@ -145,18 +145,12 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
 
 
   def isReady(req: CreateReq): Boolean = {
-    val coveringList = client.getCoveringBoxesFor(Address.create(req.paymentAddress), 4*Configs.fee)
-    if(coveringList.isCovered) {
+    val coveringList = utils.getCoveringBoxesWithMempool(req.paymentAddress, Configs.fee*4)
+    if(coveringList._2) {
       createReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
     }
-    else {
-      val numberTxInMempool = explorer.getNumberTxInMempoolByAddress(req.paymentAddress)
-      if (numberTxInMempool > 0){
-        createReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
-      }
-    }
     if (req.state == 0) {
-      if(coveringList.isCovered) return true
+      if(coveringList._2) return true
     }
     else if (req.state == 1) {
       val txState = utils.checkTransaction(req.createTxId.getOrElse(""))
