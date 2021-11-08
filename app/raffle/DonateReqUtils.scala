@@ -47,7 +47,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         val feeEmissionAddress: ErgoAddress = Configs.addressEncoder.fromProposition(donateContract.getErgoTree).get
 
         val req: DonateReq = donateReqDAO.insert(ticketCounts, expectedDonate, raffleDeadline, 0, feeEmissionAddress.toString, raffleId,
-          null, pk, LocalDateTime.now().toString, utils.currentTime + Configs.creationDelay)
+          null, pk, LocalDateTime.now().toString, client.getHeight + Configs.creationDelay)
         logger.debug("Donate payment address created")
 
         (feeEmissionAddress.toString, expectedDonate, req.id)
@@ -158,7 +158,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
     val paymentBoxCover = utils.getCoveringBoxesWithMempool(req.paymentAddress, req.fee)
 
     if(paymentBoxCover._2) {
-      donateReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
+      donateReqDAO.updateTTL(req.id, client.getHeight + Configs.creationDelay)
     }
     if (req.state == 0) {
       if(paymentBoxCover._2) {

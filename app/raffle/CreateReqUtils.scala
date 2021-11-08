@@ -27,7 +27,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
       val paymentAddress = addresses.getRaffleCreateProxyContract(pk, charityPercent, name, description, deadlineHeight, charityAddr, goal, ticketPrice)
       val picLinksJson: String = picLinks.asJson.toString
       val req: CreateReq = createReqDAO.insert(name, description, goal, deadlineHeight, charityPercent, charityAddr, ticketPrice, 0, pk, paymentAddress,
-        null, null, picLinksJson, LocalDateTime.now().toString, Configs.creationDelay + utils.currentTime)
+        null, null, picLinksJson, LocalDateTime.now().toString, Configs.creationDelay + client.getHeight)
       (paymentAddress, req.id)
     }
     catch {
@@ -43,7 +43,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
       val txB = ctx.newTxBuilder()
       val prover = ctx.newProverBuilder()
         .build()
-      val paymentBoxList = utils.getCoveringBoxesWithMempool(req.paymentAddress, Configs.fee*4)
+      val paymentBoxList = utils.getCoveringBoxesWithMempool(req.paymentAddress, Configs.creationFee)
       if(!paymentBoxList._2) throw paymentNotCoveredException(s"Creation payment for request ${req.id} not covered the fee, request state id ${req.state} and request tx is ${req.createTxId}")
 
       val outputServiceBox = txB.outBoxBuilder()
@@ -83,7 +83,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         .registers(tokenName, tokenName, ErgoValue.of("0".getBytes("utf-8")))
         .build()
 
-      var change = paymentBoxList._3 - Configs.fee*4
+      var change = paymentBoxList._3 - Configs.creationFee
       var fee = Configs.fee
       if(change <= Configs.minBoxErg) fee += change
 
@@ -145,9 +145,9 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
 
 
   def isReady(req: CreateReq): Boolean = {
-    val coveringList = utils.getCoveringBoxesWithMempool(req.paymentAddress, Configs.fee*4)
+    val coveringList = utils.getCoveringBoxesWithMempool(req.paymentAddress, Configs.creationFee)
     if(coveringList._2) {
-      createReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
+      createReqDAO.updateTTL(req.id, client.getHeight + Configs.creationDelay)
     }
     if (req.state == 0) {
       if(coveringList._2) return true
