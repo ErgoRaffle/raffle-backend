@@ -1,7 +1,7 @@
 package Services
 import helpers.{Configs, Utils, connectionException, failedTxException, skipException}
 import javax.inject.Inject
-import network.{Client}
+import network.Client
 import play.api.Logger
 import raffle.{CreateReqUtils, DonateReqUtils, FinalizeReqUtils, RaffleUtils}
 import dao.{CreateReqDAO, DonateReqDAO}

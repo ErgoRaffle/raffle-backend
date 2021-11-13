@@ -93,6 +93,8 @@ class Addresses @Inject()(client: Client, contract: RaffleContract){
         .item("raffleServiceToken", ErgoId.create(Configs.token.service).getBytes)
         .item("raffleNFT", ErgoId.create(Configs.token.nft).getBytes)
         .item("fee", Configs.fee)
+        .item("ExpireHeight", 100) // TODO
+        .item("ownerPk", Configs.serviceOwner.getPublicKey)
         .build(), contract.ticketScript)
     })
   }
@@ -142,9 +144,14 @@ class Addresses @Inject()(client: Client, contract: RaffleContract){
   }
 
   def getRaffleCreateProxyContract(pk: String, charity: Long, name: String, description: String, deadlineHeight: Long,
-                                   charityAddr: String, goal: Long, ticketPrice: Long): String = {
+                                   charityAddr: String, goal: Long, ticketPrice: Long, picLinks: List[String]): String = {
     client.getClient.execute((ctx: BlockchainContext) => {
-      val proxyContract = ctx.compileContract(ConstantsBuilder.create()
+      var pictureConstraints: String = ""
+      for(i <- picLinks.indices){
+        pictureConstraints += s"OUTPUTS(1).R6[Coll[Coll[Byte]]].get(${i+2}) == link$i,\n"
+      }
+      val updateContract = contract.createRaffleProxyScript.format(pictureConstraints)
+      val constants = ConstantsBuilder.create()
         .item("userAddress", Address.create(pk).getErgoAddress.script.bytes)
         .item("minFee", Configs.fee)
         .item("refundHeightThreshold", ctx.getHeight + ((Configs.creationDelay / 60 / 2) + 1).toLong)
@@ -155,7 +162,13 @@ class Addresses @Inject()(client: Client, contract: RaffleContract){
         .item("raffleServiceNFT", ErgoId.create(Configs.token.nft).getBytes)
         .item("raffleServiceToken", ErgoId.create(Configs.token.service).getBytes)
         .item("charityAddress", Address.create(charityAddr).getErgoAddress.script.bytes)
-        .build(), contract.createRaffleProxyScript)
+        .item("name", name.getBytes("utf-8"))
+        .item("description", description.getBytes("utf-8"))
+        .item("maxFee", Configs.fee)
+      for(i <- picLinks.indices){
+        constants.item(s"link$i", picLinks(i).getBytes("utf-8"))
+      }
+      val proxyContract = ctx.compileContract(constants.build(), updateContract)
       Configs.addressEncoder.fromProposition(proxyContract.getErgoTree).get.toString
     })
   }

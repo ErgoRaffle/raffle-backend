@@ -5,7 +5,6 @@ import javax.inject.Inject
 
 object RaffleContract {
   lazy val tokenIdService = "be5ecd5e083a82b11266e873cdac37c94b2c2cdeed3894ba9f9d16b8a8c879d8"
-
 }
 
 class RaffleContract @Inject()() {
@@ -51,9 +50,8 @@ class RaffleContract @Inject()() {
        |        sigmaProp(
        |          allOf(
        |            Coll(
-       |              // atmost we can have 5 output [service, raffle, token, fee, change]
+       |              // at most we can have 5 output [service, raffle, token, fee, change]
        |              OUTPUTS.size <= 5,
-       |              OUTPUTS.size >= 4,
        |              OUTPUTS(0).propositionBytes == SELF.propositionBytes,
        |              OUTPUTS(0).tokens(0)._1 == raffleServiceNFT,
        |              OUTPUTS(0).tokens(1)._1 == raffleServiceToken,
@@ -72,7 +70,7 @@ class RaffleContract @Inject()() {
        |              OUTPUTS(1).R4[Coll[Long]].get(5) == 0,
        |              // Raffle charity address
        |              OUTPUTS(1).R5[Coll[Byte]].isDefined,
-       |              // [Name, Description, id]
+       |              // [Name, Description, pictures]
        |              OUTPUTS(1).R6[Coll[Coll[Byte]]].get.size >= 2,
        |              // service fee address stored in R7
        |              OUTPUTS(1).R7[Coll[Byte]].get == SELF.R5[Coll[Byte]].get,
@@ -95,9 +93,8 @@ class RaffleContract @Inject()() {
   lazy val ticketScript: String =
     s"""{
        |  //winner reward. must pay back service token to servicebox we have 3 input boxes in this condition
-       |  if (HEIGHT < SELF.R5[Coll[Long]].get(2)){
-       |    // raffle does not completed
-       |    sigmaProp(false)
+       |  if (HEIGHT > SELF.R5[Coll[Long]].get(2) + ExpireHeight){
+       |    sigmaProp(ownerPk) //(decodePoint(SELF.R6[Coll[Byte]].get))
        |  } else if (INPUTS.size == 3) {
        |    // Winner
        |    sigmaProp(
@@ -105,7 +102,6 @@ class RaffleContract @Inject()() {
        |        Coll(
        |          OUTPUTS(1).value == INPUTS(1).value,
        |          OUTPUTS(1).propositionBytes == SELF.R4[Coll[Byte]].get,
-       |          INPUTS(2).id == SELF.id,
        |          INPUTS(1).tokens(0)._1 == raffleServiceToken,
        |          INPUTS(1).tokens(1)._1 == SELF.tokens(0)._1
        |        )
@@ -118,7 +114,6 @@ class RaffleContract @Inject()() {
        |        Coll(
        |          INPUTS(0).tokens(1)._1 == SELF.tokens(0)._1,
        |          INPUTS(0).tokens(0)._1 == raffleServiceToken,
-       |          INPUTS(1).id == SELF.id,
        |          INPUTS.size == 2,
        |          OUTPUTS(1).propositionBytes == SELF.R4[Coll[Byte]].get,
        |          OUTPUTS(1).value == SELF.R5[Coll[Long]].get(3) * SELF.tokens(0)._2
@@ -135,7 +130,7 @@ class RaffleContract @Inject()() {
        |sigmaProp(
        |  allOf(
        |    Coll(
-       |      SELF.id == INPUTS(0).id,
+       |      OUTPUTS(0).tokens(1)._1 == SELF.R8[Coll[Byte]].get,
        |      OUTPUTS(0).value == SELF.value,
        |      blake2b256(OUTPUTS(0).propositionBytes) == raffleActiveHash,
        |      OUTPUTS(0).R4[Coll[Long]].get == SELF.R4[Coll[Long]].get,
@@ -175,9 +170,9 @@ class RaffleContract @Inject()() {
        |          // validate app.raffle box
        |          OUTPUTS(0).tokens(0)._1 == SELF.tokens(0)._1,
        |          OUTPUTS(0).propositionBytes == SELF.propositionBytes,
-       |          OUTPUTS(0).R5[Coll[Byte]] == SELF.R5[Coll[Byte]],
-       |          OUTPUTS(0).R6[Coll[Coll[Byte]]] == SELF.R6[Coll[Coll[Byte]]],
-       |          OUTPUTS(0).R7[Coll[Byte]] == SELF.R7[Coll[Byte]],
+       |          OUTPUTS(0).R5[Coll[Byte]].get == charityAddress,
+       |          OUTPUTS(0).R6[Coll[Coll[Byte]]].get == SELF.R6[Coll[Coll[Byte]]].get,
+       |          OUTPUTS(0).R7[Coll[Byte]].get == serviceAddress,
        |          outCharityCoef == charityCoef,
        |          outServiceFee == serviceFee,
        |          outTicketPrice == ticketPrice,
@@ -186,17 +181,16 @@ class RaffleContract @Inject()() {
        |          outTotalSoldTicket == totalSoldTicket + currentSoldTicket,
        |          // check ticket script
        |          blake2b256(OUTPUTS(1).propositionBytes) == ticketScriptHash,
-       |          OUTPUTS(1).tokens.size == 1,
        |          OUTPUTS(1).tokens(0)._1 == SELF.tokens(1)._1,
        |          // protect token from burning
-       |          SELF.tokens(1)._2 == OUTPUTS(0).tokens(1)._2 + OUTPUTS(1).tokens(0)._2,
+       |          SELF.tokens(1)._2 == OUTPUTS(0).tokens(1)._2 + currentSoldTicket,
        |          // check ergs
-       |          OUTPUTS(0).value > SELF.value,
        |          OUTPUTS(1).value >= fee,
        |          OUTPUTS(0).value == SELF.value + (currentSoldTicket * ticketPrice),
        |          // Winner Address or redeem
        |          // TODO check R4 to be valid address
        |          OUTPUTS(1).R4[Coll[Byte]].isDefined,
+       |          OUTPUTS(1).R6[Coll[Byte]].get == serviceAddress,
        |          // check ticket parameters [rangeStart, rangeEnd, deadlineHeight, ticketPrice]
        |          OUTPUTS(1).R5[Coll[Long]].get(0) == totalSoldTicket,
        |          OUTPUTS(1).R5[Coll[Long]].get(1) == outTotalSoldTicket,
@@ -210,34 +204,29 @@ class RaffleContract @Inject()() {
        |        // charge charity address and service fee. then change status to completed
        |        val charityAmount = totalRaised * charityCoef / 100L
        |        val serviceFeeAmount = totalRaised * serviceFee / 100L
-       |        val winnerAmount = totalRaised - charityAmount - serviceFeeAmount + fee
+       |        val winnerAmount = totalRaised - charityAmount - serviceFeeAmount
        |        val winNumber = (((byteArrayToBigInt(CONTEXT.dataInputs(0).id.slice(0, 15)).toBigInt % totalSoldTicketBI) + totalSoldTicketBI) % totalSoldTicketBI).toBigInt
        |        sigmaProp(
        |          allOf(
        |            Coll(
        |              // check winner box remain on output box
        |              blake2b256(OUTPUTS(0).propositionBytes) == winnerScriptHash,
-       |              OUTPUTS(0).R4[Coll[Long]].get(0) == charityCoef,
-       |              OUTPUTS(0).R4[Coll[Long]].get(1) == serviceFee,
-       |              OUTPUTS(0).R4[Coll[Long]].get(2) == ticketPrice,
-       |              OUTPUTS(0).R4[Coll[Long]].get(3) == goal,
-       |              OUTPUTS(0).R4[Coll[Long]].get(4) == deadlineHeight,
-       |              OUTPUTS(0).R4[Coll[Long]].get(5) == totalSoldTicket,
-       |              OUTPUTS(0).R5[Coll[Byte]].get == SELF.R5[Coll[Byte]].get,
+       |              OUTPUTS(0).R4[Coll[Long]].get == SELF.R4[Coll[Long]].get,
+       |              OUTPUTS(0).R5[Coll[Byte]].get == charityAddress,
        |              OUTPUTS(0).R6[Coll[Coll[Byte]]].get == SELF.R6[Coll[Coll[Byte]]].get,
-       |              OUTPUTS(0).R7[Coll[Byte]].get == SELF.R7[Coll[Byte]].get,
-
+       |              OUTPUTS(0).R7[Coll[Byte]].get == serviceAddress,
+       |
        |              OUTPUTS(0).R8[Long].get == winNumber,
        |              OUTPUTS(0).tokens(0)._1 == SELF.tokens(0)._1,
        |              OUTPUTS(0).tokens(1)._1 == SELF.tokens(1)._1,
        |              OUTPUTS(0).tokens(1)._2 == SELF.tokens(1)._2,
-       |              OUTPUTS(0).value == winnerAmount,
+       |              OUTPUTS(0).value >= winnerAmount,
        |              // check charity to passed to charity address
        |              OUTPUTS(1).propositionBytes == charityAddress,
-       |              OUTPUTS(1).value == charityAmount,
+       |              OUTPUTS(1).value >= charityAmount,
        |              // check service fee
        |              OUTPUTS(2).propositionBytes == serviceAddress,
-       |              OUTPUTS(2).value == serviceFeeAmount,
+       |              OUTPUTS(2).value >= serviceFeeAmount,
        |              // check datainput to be oracle box
        |              CONTEXT.dataInputs(0).tokens(0)._1 == randomBoxToken,
        |              // and datainput must created after deadline
@@ -252,16 +241,10 @@ class RaffleContract @Inject()() {
        |            Coll(
        |              // check winner box remain on output box
        |              blake2b256(OUTPUTS(0).propositionBytes) == redeemScriptHash,
-       |              OUTPUTS(0).R4[Coll[Long]].get(0) == charityCoef,
-       |              OUTPUTS(0).R4[Coll[Long]].get(1) == serviceFee,
-       |              OUTPUTS(0).R4[Coll[Long]].get(2) == ticketPrice,
-       |              OUTPUTS(0).R4[Coll[Long]].get(3) == goal,
-       |              OUTPUTS(0).R4[Coll[Long]].get(4) == deadlineHeight,
-       |              OUTPUTS(0).R4[Coll[Long]].get(5) == totalSoldTicket,
+       |              OUTPUTS(0).R4[Coll[Long]].get == SELF.R4[Coll[Long]].get,
        |              // box must move to refund state
-       |              OUTPUTS(0).R5[Coll[Byte]] == SELF.R5[Coll[Byte]],
+       |              OUTPUTS(0).R5[Coll[Byte]].get == charityAddress,
        |              OUTPUTS(0).R6[Coll[Coll[Byte]]].get == SELF.R6[Coll[Coll[Byte]]].get,
-       |              OUTPUTS(0).R7[Coll[Byte]] == SELF.R7[Coll[Byte]],
        |              OUTPUTS(0).tokens(0)._1 == SELF.tokens(0)._1,
        |              OUTPUTS(0).tokens(1)._1 == SELF.tokens(1)._1,
        |              OUTPUTS(0).tokens(1)._2 == SELF.tokens(1)._2,
@@ -284,7 +267,6 @@ class RaffleContract @Inject()() {
        |        OUTPUTS(0).tokens(0)._1 == raffleServiceNFT,
        |        OUTPUTS(0).tokens(1)._1 == raffleServiceToken,
        |        OUTPUTS(0).tokens(1)._2 == SELF.tokens(0)._2 + INPUTS(0).tokens(1)._2,
-       |        INPUTS(1).id == SELF.id,
        |        INPUTS(2).tokens(0)._1 == SELF.tokens(1)._1,
        |        INPUTS(2).R5[Coll[Long]].get(0) <= winNumber,
        |        INPUTS(2).R5[Coll[Long]].get(1) > winNumber,
@@ -325,7 +307,6 @@ class RaffleContract @Inject()() {
        |          OUTPUTS(0).R4[Coll[Long]].get(5) == totalSoldTicket - INPUTS(1).tokens(0)._2,
        |          OUTPUTS(0).R5[Coll[Byte]].get == SELF.R5[Coll[Byte]].get,
        |          OUTPUTS(0).R6[Coll[Coll[Byte]]].get == SELF.R6[Coll[Coll[Byte]]].get,
-       |          OUTPUTS(0).R7[Coll[Byte]].get == SELF.R7[Coll[Byte]].get,
        |          OUTPUTS(0).tokens(0)._1 == raffleServiceToken,
        |          OUTPUTS(0).tokens(1)._1 == SELF.tokens(1)._1,
        |          // validate Token & ERG
@@ -349,6 +330,9 @@ class RaffleContract @Inject()() {
        |        OUTPUTS(1).R4[Coll[Long]].get(3) == goal,
        |        OUTPUTS(1).R4[Coll[Long]].get(4) == deadlineHeight,
        |        OUTPUTS(1).R5[Coll[Byte]].get == charityAddress,
+       |        OUTPUTS(1).R6[Coll[Coll[Byte]]].get(0) == name,
+       |        OUTPUTS(1).R6[Coll[Coll[Byte]]].get(1) == description,
+       |        %s
        |      ))
        |    }
        |    sigmaProp(createRaffleConditions)
@@ -356,10 +340,10 @@ class RaffleContract @Inject()() {
        |  else {
        |    val returnCreateRaffleFee = {
        |      allOf(Coll(
-       |        OUTPUTS(0).value >= (INPUTS(0).value - minFee),
        |        OUTPUTS(0).propositionBytes == userAddress, // user must receive the appropriate amount, only refund transactions's fee must be deducted from user's funds
        |        HEIGHT > refundHeightThreshold, // The create raffle confirmation block has passed the refundHeightThreshold
-       |        OUTPUTS.size == 2 // only refund box and transaction fee box is needed
+       |        OUTPUTS.size == 2, // only refund box and transaction fee box is needed
+       |        OUTPUTS(1).value <= maxFee
        |      ))
        |    }
        |    sigmaProp(returnCreateRaffleFee)
@@ -374,12 +358,11 @@ class RaffleContract @Inject()() {
        |  }
        |  else {
        |    val returnDonates = {
-       |      val total = INPUTS.fold(0L, {(x:Long, b:Box) => x + b.value})
        |      allOf(Coll(
-       |        OUTPUTS(0).value >= (total - minFee),
        |        OUTPUTS(0).propositionBytes == userAddress, // user must receive the appropriate amount, only refund transactions's fee must be deducted from user's funds
-       |        (total < expectedDonate || HEIGHT > raffleDeadline), // either the total amount of donated is less than expectedDonate Or the donate confirmation block has passed the Deadline Raffle
-       |        OUTPUTS.size == 2 // only refund box and transaction fee box is needed
+       |        (HEIGHT > refundHeightThreshold || HEIGHT > raffleDeadline), // The donate request confirmation block has passed the refundHeightThreshold or raffleDeadline passed
+       |        OUTPUTS.size == 2, // only refund box and transaction fee box is needed
+       |        OUTPUTS(1).value <= maxFee,
        |      ))
        |    }
        |    sigmaProp(returnDonates)
