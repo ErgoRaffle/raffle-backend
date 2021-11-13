@@ -71,6 +71,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
 
         val paymentBoxCover = utils.getCoveringBoxesWithMempool(req.paymentAddress, req.fee)
         if (!paymentBoxCover._2) throw paymentNotCoveredException(s"Donation payment for request ${req.id} not covered the fee, request state is ${req.state} and request tx is ${req.donateTxID.orNull}")
+        logger.debug(s"Payment covered amount for request ${req.id} is ${paymentBoxCover._3}")
 
         val txB = ctx.newTxBuilder()
         val deadlineHeight = r4(4)
