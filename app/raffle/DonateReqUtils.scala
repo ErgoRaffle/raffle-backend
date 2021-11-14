@@ -47,7 +47,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         val feeEmissionAddress: ErgoAddress = Configs.addressEncoder.fromProposition(donateContract.getErgoTree).get
 
         val req: DonateReq = donateReqDAO.insert(ticketCounts, expectedDonate, raffleDeadline, 0, feeEmissionAddress.toString, raffleId,
-          null, pk, LocalDateTime.now().toString, utils.currentTime + Configs.creationDelay)
+          null, pk, LocalDateTime.now().toString, client.getHeight + Configs.creationDelay)
         logger.debug("Donate payment address created")
 
         (feeEmissionAddress.toString, expectedDonate, req.id)
@@ -69,10 +69,9 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         val r4 = raffleBox.getRegisters.get(0).getValue.asInstanceOf[CollOverArray[Long]].toArray.clone()
         val ticketPrice: Long = r4(2)
 
-        val paymentBoxList = client.getCoveringBoxesFor(Address.create(req.paymentAddress), req.fee)
-        logger.debug(paymentBoxList.getCoveredAmount.toString + " " + paymentBoxList.isCovered.toString)
-        // TODO: Add ChainTx for paymentBoxes
-        if (!paymentBoxList.isCovered) throw paymentNotCoveredException(s"Donation payment for request ${req.id} not covered the fee, request state is ${req.state} and request tx is ${req.donateTxID.orNull}")
+        val paymentBoxCover = utils.getCoveringBoxesWithMempool(req.paymentAddress, req.fee)
+        if (!paymentBoxCover._2) throw paymentNotCoveredException(s"Donation payment for request ${req.id} not covered the fee, request state is ${req.state} and request tx is ${req.donateTxID.orNull}")
+        logger.debug(s"Payment covered amount for request ${req.id} is ${paymentBoxCover._3}")
 
         val txB = ctx.newTxBuilder()
         val deadlineHeight = r4(4)
@@ -105,10 +104,10 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
             utils.longListToErgoValue(Array(ticketSold, ticketSold + req.ticketCount, deadlineHeight, ticketPrice))
           ).build()
 
-        var change = paymentBoxList.getCoveredAmount - req.fee
+        var change = paymentBoxCover._3 - req.fee
         var fee = Configs.fee
         if (change <= Configs.minBoxErg) fee += change
-        val txBoxList: Seq[InputBox] = Seq(raffleBox) ++ paymentBoxList.getBoxes.asScala.toSeq
+        val txBoxList: Seq[InputBox] = Seq(raffleBox) ++ paymentBoxCover._1
         val tx = txB.boxesToSpend(txBoxList.asJava)
           .fee(fee)
           .outputs(outputRaffle, ticketOutput)
@@ -157,20 +156,13 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
 
   def isReady(req: DonateReq): Boolean = {
     logger.debug("Request state : "+ req.state.toString)
-    val paymentBoxList = client.getCoveringBoxesFor(Address.create(req.paymentAddress), req.fee)
+    val paymentBoxCover = utils.getCoveringBoxesWithMempool(req.paymentAddress, req.fee)
 
-    logger.debug(paymentBoxList.getCoveredAmount.toString +", "+ req.fee.toString)
-    if(paymentBoxList.isCovered) {
-      donateReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
-    }
-    else {
-      val numberTxInMempool = explorer.getNumberTxInMempoolByAddress(req.paymentAddress)
-      if (numberTxInMempool > 0){
-        donateReqDAO.updateTTL(req.id, utils.currentTime + Configs.creationDelay)
-      }
+    if(paymentBoxCover._2) {
+      donateReqDAO.updateTTL(req.id, client.getHeight + Configs.creationDelay)
     }
     if (req.state == 0) {
-      if(paymentBoxList.isCovered) {
+      if(paymentBoxCover._2) {
         logger.info(s"Payment found for request ${req.id}")
         return true
       }

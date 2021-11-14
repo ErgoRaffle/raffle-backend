@@ -1,14 +1,13 @@
 package helpers
 
 import java.io.{PrintWriter, StringWriter}
-
 import javax.inject.{Inject, Singleton}
 import io.circe.{Json => ciJson}
 import network.{Client, Explorer}
-import org.ergoplatform.appkit.{BlockchainContext, ErgoClientException, ErgoType, ErgoValue, InputBox, JavaHelpers}
+import org.ergoplatform.appkit.{Address, BlockchainContext, ErgoClientException, ErgoType, ErgoValue, InputBox, JavaHelpers, SignedTransaction}
 import special.collection.Coll
-import java.util.Calendar
 
+import java.util.Calendar
 import org.ergoplatform.ErgoAddress
 import sigmastate.serialization.ErgoTreeSerializer
 import network.Request
@@ -16,6 +15,7 @@ import play.api.Logger
 import play.api.libs.json._
 import raffle.Addresses
 
+import scala.collection.JavaConverters._
 import scala.collection.mutable.Seq
 import scala.util.Try
 
@@ -54,6 +54,19 @@ class Utils @Inject()(client: Client, explorer: Explorer, addresses: Addresses) 
     ErgoValue.of(longColl, ErgoType.longType())
   }
 
+  def JsonToTransaction(txJson: JsValue, ctx: BlockchainContext): SignedTransaction ={
+    val inputs = (txJson \ "inputs").as[JsValue].toString().replaceAll("id", "boxId")
+    val outputs = (txJson \ "outputs").as[JsValue].toString().replaceAll("id", "boxId").replaceAll("txId", "transactionId")
+    val dataInputs = (txJson\ "dataInputs").as[JsValue].toString()
+    val id = (txJson \ "id").as[String]
+    val newJson = s"""{
+          "id" : "${id}",
+          "inputs" : ${inputs},
+          "dataInputs" : ${dataInputs},
+          "outputs" : ${outputs}
+          }"""
+    ctx.signedTxFromJson(newJson.replaceAll("null", "\"\""))
+  }
 
   def findMempoolBox(address: String, box: InputBox, ctx: BlockchainContext): InputBox = {
     try {
@@ -71,17 +84,7 @@ class Utils @Inject()(client: Client, explorer: Explorer, addresses: Addresses) 
       logger.debug(keys.toString())
       while (keys.contains(outBox.getId.toString)) {
         val txJson = txMap(outBox.getId.toString)
-        val inputs = (txJson \ "inputs").as[JsValue].toString().replaceAll("id", "boxId")
-        val outputs = (txJson \ "outputs").as[JsValue].toString().replaceAll("id", "boxId").replaceAll("txId", "transactionId")
-        val dataInputs = (txJson\ "dataInputs").as[JsValue].toString()
-        val id = (txJson \ "id").as[String]
-        val newJson = s"""{
-          "id" : "${id}",
-          "inputs" : ${inputs},
-          "dataInputs" : ${dataInputs},
-          "outputs" : ${outputs}
-          }"""
-        val tmpTx = ctx.signedTxFromJson(newJson.replaceAll("null", "\"\""))
+        val tmpTx = JsonToTransaction(txJson, ctx)
         outBox = tmpTx.getOutputsToSpend.get(0)
       }
       outBox
@@ -165,6 +168,34 @@ class Utils @Inject()(client: Client, explorer: Explorer, addresses: Addresses) 
       }
     }
   }
+
+  /**
+   * creates a box for the specified address and amount
+   * @return input box List, is covered, covered amount
+   */
+  def getCoveringBoxesWithMempool(paymentAddress: String, amount: Long): (List[InputBox], Boolean, Long) ={
+    val cover = client.getCoveringBoxesFor(Address.create(paymentAddress), amount)
+    if(cover.isCovered) (cover.getBoxes.asScala.toList, true, cover.getCoveredAmount)
+    else {
+      var boxes: List[InputBox] = cover.getBoxes.asScala.toList
+      val mempool = Json.parse(explorer.getUnconfirmedTxByAddress(paymentAddress).toString())
+      val txs = (mempool \ "items").as[List[JsValue]]
+      var totalValue: Long = cover.getCoveredAmount
+      txs.foreach(txJson => {
+        client.getClient.execute(ctx => {
+          val tx = JsonToTransaction(txJson, ctx)
+          val selectedBoxes: List[InputBox] = tx.getOutputsToSpend.asScala.toList
+            .filter(box => Configs.addressEncoder.fromProposition(box.getErgoTree).get == Address.create(paymentAddress).getErgoAddress)
+          if(totalValue < amount) {
+            boxes = boxes ++ selectedBoxes
+            totalValue = totalValue + selectedBoxes.map(_.getValue).reduce((x,y)=> x + y)
+          }
+        })
+      })
+      (boxes, totalValue >= amount, totalValue)
+    }
+  }
+
 
   def checkTransaction(txId: String): Int = {
     try {

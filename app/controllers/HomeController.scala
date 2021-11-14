@@ -183,13 +183,12 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       val createResult = createReqUtils.CreateRaffleProxyAddress(walletAddr, charityPercent, name, description, deadlineHeight + client.getHeight, charityAddr, goal, ticketPrice, picLinks)
       val paymentAddress = createResult._1
       val requestId = createResult._2
-      val amount = Configs.fee * 4
       val delay = Configs.creationDelay
 
       val result = Json.fromFields(List(
         ("deadline", Json.fromLong(delay)),
         ("address", Json.fromString(paymentAddress)),
-        ("erg", Json.fromLong(amount)),
+        ("erg", Json.fromLong(Configs.creationFee)),
         ("requestId", Json.fromLong(requestId))
       ))
       Ok(result.toString()).as("application/json")

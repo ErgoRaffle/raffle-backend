@@ -15,6 +15,7 @@ object Configs extends ConfigHelper {
   lazy val ipfsResolver: String = readKey("ipfsResolver").replaceAll("/$", "")
 
   lazy val fee: Long = readKey("fee").toLong
+  lazy val creationFee: Long = fee * 4
   lazy val minBoxErg: Long = readKey("minBoxErg").toLong
   lazy val serviceOwner: Address = Address.create(readKey("service.owner"))
   lazy val serviceFeeAddress: Address = Address.create(readKey("service.feeAddress"))
