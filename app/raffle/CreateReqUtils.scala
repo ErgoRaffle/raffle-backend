@@ -24,7 +24,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
   def CreateRaffleProxyAddress(pk: String, charityPercent: Int, name: String, description: String, deadlineHeight: Long,
                                charityAddr: String, goal: Long, ticketPrice: Long, picLinks: List[String]): (String, Long) = {
     try {
-      val paymentAddress = addresses.getRaffleCreateProxyContract(pk, charityPercent, name, description, deadlineHeight, charityAddr, goal, ticketPrice)
+      val paymentAddress = addresses.getRaffleCreateProxyContract(pk, charityPercent, name, description, deadlineHeight, charityAddr, goal, ticketPrice, picLinks)
       val picLinksJson: String = picLinks.asJson.toString
       val req: CreateReq = createReqDAO.insert(name, description, goal, deadlineHeight, charityPercent, charityAddr, ticketPrice, 0, pk, paymentAddress,
         null, null, picLinksJson, LocalDateTime.now().toString, Configs.creationDelay + client.getHeight)
