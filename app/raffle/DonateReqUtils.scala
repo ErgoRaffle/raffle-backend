@@ -81,7 +81,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
 
         val outputRaffle = txB.outBoxBuilder()
           .value(raffleBox.getValue + total_erg)
-          .contract(addresses.getRaffleActiveContract())
+          .contract(addresses.raffleActiveContract)
           .tokens(
             raffleBox.getTokens.get(0),
             new ErgoToken(raffleBox.getTokens.get(1).getId, raffleBox.getTokens.get(1).getValue - req.ticketCount)
@@ -95,7 +95,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
 
         val ticketOutput = txB.outBoxBuilder()
           .value(Configs.fee)
-          .contract(addresses.getTicketContract())
+          .contract(addresses.ticketContract)
           .tokens(
             new ErgoToken(raffleBox.getTokens.get(1).getId, req.ticketCount)
           )

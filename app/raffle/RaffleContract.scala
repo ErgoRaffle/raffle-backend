@@ -90,6 +90,7 @@ class RaffleContract @Inject()() {
        |  }
        |}""".stripMargin
 
+  // TODO Add service address in registers
   lazy val ticketScript: String =
     s"""{
        |  //winner reward. must pay back service token to servicebox we have 3 input boxes in this condition

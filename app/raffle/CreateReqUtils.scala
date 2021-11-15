@@ -71,14 +71,14 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
       val r8 = ErgoValue.of(serviceBox.getId.getBytes.clone())
       val outputRaffleBox = txB.outBoxBuilder()
         .value(Configs.fee * 2)
-        .contract(addresses.getRaffleWaitingTokenContract())
+        .contract(addresses.raffleInactiveContract)
         .tokens(new ErgoToken(Configs.token.service, 1))
         .registers(r4, r5, r6, r7, r8).build()
 
       val tokenName = ErgoValue.of(s"Raffle_token: ${req.name}".getBytes("utf-8"))
       val outputTokenIssueBox = txB.outBoxBuilder()
         .value(Configs.fee)
-        .contract(addresses.getRaffleTokenIssueContract())
+        .contract(addresses.tokenRepoContract)
         .tokens(new ErgoToken(serviceBox.getId.getBytes, 1000000000L))
         .registers(tokenName, tokenName, ErgoValue.of("0".getBytes("utf-8")))
         .build()
@@ -114,7 +114,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         .build()
       val raffleOutputBox = txB.outBoxBuilder()
         .value(Configs.fee * 2)
-        .contract(addresses.getRaffleActiveContract())
+        .contract(addresses.raffleActiveContract)
         .registers(
           raffleBox.getRegisters.get(0),
           raffleBox.getRegisters.get(1),
@@ -200,8 +200,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
 
   def independentMergeTxGeneration(): Unit ={
     client.getClient.execute(ctx => {
-      val raffleWaitingTokenAdd = Address.fromErgoTree(addresses.getRaffleWaitingTokenContract().getErgoTree, Configs.networkType)
-      val raffleWaitingTokenBoxes = client.getAllUnspentBox(raffleWaitingTokenAdd)
+      val raffleWaitingTokenBoxes = client.getAllUnspentBox(addresses.raffleInactiveAddress)
         .filter(_.getTokens.size() > 0)
         .filter(_.getTokens.get(0).getId.toString == Configs.token.service)
       raffleWaitingTokenBoxes.foreach(box => {
