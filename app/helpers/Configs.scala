@@ -33,6 +33,8 @@ object Configs extends ConfigHelper {
 
   lazy val activeFinalize: Boolean = readKey("activeFinalize").toBoolean
 
+  lazy val contactWebHook: String = readKey("contactWebHook")
+
   object token {
     lazy val nft: String = readKey("raffle.token.nft")
     lazy val service: String = readKey("raffle.token.service")
