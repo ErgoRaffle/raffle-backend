@@ -41,6 +41,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
             .item("minFee", Configs.fee)
             .item("expectedDonate", expectedDonate)
             .item("raffleDeadline", raffleDeadline)
+            .item("refundHeightThreshold", ctx.getHeight + Configs.expireHeight)
             .build(),
           raffleContract.donateScript)
 

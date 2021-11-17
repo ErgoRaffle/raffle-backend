@@ -198,7 +198,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
       val raffleOutput = txB.outBoxBuilder()
         .value(raffleBox.getValue - Configs.fee)
         .tokens(raffleBox.getTokens.get(0), raffleBox.getTokens.get(1))
-        .contract(addresses.getRaffleRedeemContract())
+        .contract(addresses.raffleRedeemContract)
         .registers(
           raffleBox.getRegisters.get(0),
           raffleBox.getRegisters.get(1),
@@ -245,7 +245,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
         raffleBox.getTokens.get(0),
         new ErgoToken(raffleBox.getTokens.get(1).getId, raffleBox.getTokens.get(1).getValue + donation.getTokens.get(0).getValue)
       )
-      .contract(addresses.getRaffleRedeemContract())
+      .contract(addresses.raffleRedeemContract)
       .registers(
         utils.longListToErgoValue(raffleR4),
         raffleBox.getRegisters.get(1),
@@ -320,7 +320,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
           .hcursor.downField("items").as[List[Json]].getOrElse(throw parseException())
 
         boxes.filter(ticket => {
-          ticket.hcursor.downField("address").as[String].getOrElse("") == Configs.addressEncoder.fromProposition(addresses.getTicketContract().getErgoTree).get.toString
+          ticket.hcursor.downField("address").as[String].getOrElse("") == addresses.ticketAddress.toString
         }).foreach(ticket => {
           try {
             val donationBox = ctx.getBoxesById(ticket.hcursor.downField("boxId").as[String].getOrElse(throw parseException())).head
@@ -452,7 +452,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
 
   def processRefundRaffles(ctx: BlockchainContext): Unit = {
     try {
-      client.getAllUnspentBox(Address.create(Configs.addressEncoder.fromProposition(addresses.getRaffleRedeemContract().getErgoTree).get.toString))
+      client.getAllUnspentBox(addresses.raffleRedeemAddress)
         .foreach(raffle => processRefundRaffle(ctx, raffle))
     }
     catch {

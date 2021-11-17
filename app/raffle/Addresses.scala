@@ -125,7 +125,7 @@ class Addresses @Inject()(client: Client, contract: RaffleContract){
       val constants = ConstantsBuilder.create()
         .item("userAddress", Address.create(pk).getErgoAddress.script.bytes)
         .item("minFee", Configs.fee)
-        .item("refundHeightThreshold", ctx.getHeight + ((Configs.creationDelay / 60 / 2) + 1).toLong)
+        .item("refundHeightThreshold", ctx.getHeight + Configs.expireHeight)
         .item("charityCoef", charity)
         .item("ticketPrice", ticketPrice)
         .item("goal", goal)

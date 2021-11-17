@@ -63,7 +63,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
       val r5 = ErgoValue.of(new ErgoTreeContract(Address.create(req.charityAddr).getErgoAddress.script).getErgoTree.bytes)
       var r6SeqByte: Seq[Array[Byte]] = Seq(req.name.getBytes("utf-8"), req.description.getBytes("utf-8"))
       parser.parse(req.picLinks).getOrElse(null).as[List[String]].getOrElse(List())
-        .foreach(link => r6SeqByte = r6SeqByte :+ (link.getBytes("utf8")) )
+        .foreach(link => r6SeqByte = r6SeqByte :+ link.getBytes("utf8") )
       val r6 = ErgoValue.of(r6SeqByte.map(item => {
         ErgoValue.of(IndexedSeq(item: _*).toArray)
       }).map(item => item.getValue).toArray, ErgoType.collType(ErgoType.byteType()))

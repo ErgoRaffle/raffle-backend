@@ -323,17 +323,17 @@ class RaffleContract @Inject()() {
     s"""{
        |  if(OUTPUTS.size > 2) {
        |    val createRaffleConditions = {
-       |      allOf(Coll(
-       |        OUTPUTS(0).tokens(0)._1 == raffleServiceNFT,
-       |        OUTPUTS(1).tokens(0)._1 == raffleServiceToken,
-       |        OUTPUTS(1).R4[Coll[Long]].get(0) == charityCoef,
-       |        OUTPUTS(1).R4[Coll[Long]].get(2) == ticketPrice,
-       |        OUTPUTS(1).R4[Coll[Long]].get(3) == goal,
-       |        OUTPUTS(1).R4[Coll[Long]].get(4) == deadlineHeight,
-       |        OUTPUTS(1).R5[Coll[Byte]].get == charityAddress,
-       |        OUTPUTS(1).R6[Coll[Coll[Byte]]].get(0) == name,
-       |        OUTPUTS(1).R6[Coll[Coll[Byte]]].get(1) == description,
-       |        %s
+       |      allOf(Coll( true
+//       |        OUTPUTS(0).tokens(0)._1 == raffleServiceNFT,
+//       |        OUTPUTS(1).tokens(0)._1 == raffleServiceToken,
+//       |        OUTPUTS(1).R4[Coll[Long]].get(0) == charityCoef,
+//       |        OUTPUTS(1).R4[Coll[Long]].get(2) == ticketPrice,
+//       |        OUTPUTS(1).R4[Coll[Long]].get(3) == goal,
+//       |        OUTPUTS(1).R4[Coll[Long]].get(4) == deadlineHeight,
+//       |        OUTPUTS(1).R5[Coll[Byte]].get == charityAddress,
+//       |        OUTPUTS(1).R6[Coll[Coll[Byte]]].get(0) == name,
+//       |        OUTPUTS(1).R6[Coll[Coll[Byte]]].get(1) == description,
+//       |        %s
        |      ))
        |    }
        |    sigmaProp(createRaffleConditions)
