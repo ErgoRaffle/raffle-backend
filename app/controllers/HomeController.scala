@@ -6,18 +6,16 @@ import io.circe.{Json, parser}
 import io.circe.generic.codec.DerivedAsObjectCodec.deriveCodec
 import network.{Client, Explorer}
 import raffle.{Addresses, CreateReqUtils, DonateReqUtils, RaffleUtils, raffleStatus, txType}
-import raffle.txType._
 import raffle.raffleStatus._
 import play.api.Logger
 import play.api.libs.circe.Circe
 import play.api.mvc._
-
 import javax.inject._
 import models.{CreateReq, DonateReq, Raffle, TxCache}
 import org.ergoplatform.appkit.Address
-
 import java.lang
 import scala.collection.mutable.{ListBuffer, Seq}
+import io.kinoplan.emailaddress._
 
 
 @Singleton
@@ -447,5 +445,29 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       ("state", Json.fromString("success"))
     ))
     Ok(result.toString()).as("application/json")
+  }
+
+  /**
+  * send detail of form contact us trough a webhook
+   * @return status of cal webhook
+   */
+  def contact(): Action[Json] = Action(circe.json) { implicit request =>
+    try {
+      val email: String = request.body.hcursor.downField("email").as[String].getOrElse(throw new Throwable("email field must exist"))
+      if (!EmailAddress.isValid(email)) throw new Throwable("email format invalid")
+      val message: String = request.body.hcursor.downField("message").as[String].getOrElse(throw new Throwable("message field must exist"))
+      val captcha: String = request.body.hcursor.downField("recaptcha").as[String].getOrElse("")
+      if(Configs.recaptchaKey != "not-set") utils.verifyRecaptcha(captcha)
+
+      val result = {
+        utils.sendDetailForContactToWebHook(EmailAddress(email), message)
+        Json.fromFields(List(
+          ("success", Json.fromBoolean(true))
+        ))
+      }
+      Ok(result.toString).as("application/json")
+    } catch{
+      case e: Throwable => exception(e)
+    }
   }
 }
