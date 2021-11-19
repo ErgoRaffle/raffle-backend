@@ -1,14 +1,14 @@
 package raffle
 
 import dao.RaffleCacheDAO
-import helpers.{Configs, Utils, failedTxException, internalException, noRaffleException, parseException}
+import helpers.{Configs, Utils, connectionException, failedTxException, internalException, noRaffleException, parseException}
 import io.circe.Json
 
 import javax.inject.Inject
 import models.{Raffle, Ticket}
 import network.{Client, Explorer}
 import org.ergoplatform.appkit.impl.ErgoTreeContract
-import org.ergoplatform.appkit.{Address, ErgoToken, InputBox}
+import org.ergoplatform.appkit.{Address, ErgoClientException, ErgoToken, InputBox}
 import play.api.Logger
 import raffle.raffleStatus.active
 
@@ -58,8 +58,8 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
       }
       (selectedTickets, totalTickets, totalRecords)
     } catch {
+      case e: connectionException => throw e
       case _: internalException => throw internalException()
-      case _: parseException => throw internalException()
       case e: Throwable =>
         logger.error(utils.getStackTraceStr(e))
         throw new internalException
@@ -73,6 +73,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
     else raffle = Raffle(savedRaffle)
     (raffle, savedRaffle.participants, raffleStatus.apply(savedRaffle.state).toString)
   } catch{
+    case e: connectionException => throw e
     case _: java.util.NoSuchElementException => throw noRaffleException()
     case e: Throwable =>
       logger.error(utils.getStackTraceStr(e))
@@ -94,11 +95,14 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
             assets.size > 1 && assets(1).hcursor.downField("tokenId").as[String].getOrElse("") == tokenId
           }).head
       } catch{
+        case e: connectionException => throw e
         case _: java.util.NoSuchElementException => offset += 100
-        case _: parseException => throw new internalException
+        case e: parseException =>
+          logger.error(e.getMessage)
+          throw internalException()
         case e: Throwable =>
           logger.error(utils.getStackTraceStr(e))
-          throw new internalException
+          throw internalException()
       }
     }
     raffleBox
@@ -116,6 +120,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
       }
       result
     } catch{
+      case e: connectionException => throw e
       case _: java.lang.NullPointerException => 0
       case _: parseException => throw internalException()
       case e: Throwable =>
@@ -130,7 +135,10 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
         .hcursor.downField("items").as[Seq[Json]].getOrElse(throw new parseException)
         .filter(_.hcursor.downField("address").as[String].getOrElse("") == addresses.ticketAddress.toString)
     } catch{
-      case _: parseException => throw internalException()
+      case e: connectionException => throw e
+      case e: parseException =>
+        logger.error(e.getMessage)
+        throw internalException()
       case _: java.util.NoSuchElementException => throw internalException()
       case e: Throwable =>
         logger.error(utils.getStackTraceStr(e))
@@ -146,14 +154,17 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
         assets.size > 1 && assets.head.hcursor.downField("tokenId").as[String].getOrElse("") == Configs.token.service
       })
   } catch {
-    case _: parseException => throw internalException()
+    case e: connectionException => throw e
+    case e: parseException =>
+      logger.error(e.getMessage)
+      throw internalException()
     case _: java.util.NoSuchElementException => throw noRaffleException()
     case e: Throwable =>
       logger.error(utils.getStackTraceStr(e))
       throw internalException()
   }
 
-  def getWinnerBox(tokenId: String): Json = {
+  def getWinnerBox(tokenId: String): Json = try {
     var boxes: Json = null
     var winnerBox: Json = null
     var offset = 0
@@ -165,6 +176,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
         winnerBox = boxes.hcursor.downField("items").as[Seq[Json]].getOrElse(throw parseException())
           .filter(_.hcursor.downField("address").as[String].getOrElse("") == addresses.raffleWinnerAddress.toString).head
       } catch{
+        case e: connectionException => throw e
         case _: java.util.NoSuchElementException => offset += 100
         case _: parseException => throw new internalException
         case e: Throwable =>
@@ -206,6 +218,9 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
       case e: failedTxException =>
         logger.warn(e.getMessage)
         throw failedTxException()
+      case e: ErgoClientException =>
+        logger.warn(e.getMessage)
+        throw connectionException()
       case e:Throwable =>
         logger.error(utils.getStackTraceStr(e))
         throw new Throwable("refunding failed")

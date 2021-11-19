@@ -13,7 +13,6 @@ import sigmastate.serialization.ErgoTreeSerializer
 import network.Request
 import play.api.Logger
 import play.api.libs.json._
-import raffle.Addresses
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable.Seq
@@ -33,7 +32,7 @@ final case class noRaffleException(private val message: String = "No raffle foun
 
 
 @Singleton
-class Utils @Inject()(client: Client, explorer: Explorer, addresses: Addresses) {
+class Utils @Inject()(client: Client, explorer: Explorer) {
   private val logger: Logger = Logger(this.getClass)
 
   def getStackTraceStr(e: Throwable): String = {
@@ -89,15 +88,13 @@ class Utils @Inject()(client: Client, explorer: Explorer, addresses: Addresses) 
       }
       outBox
     } catch {
-      case e: explorerException => {
-        logger.warn(e.getMessage)
-        throw connectionException()
-      }
-      case _: parseException => throw connectionException()
-      case e: Throwable => {
+      case e: connectionException => throw e
+      case e: JsResultException =>
+        logger.error(e.getMessage)
+        throw internalException()
+      case e: Throwable =>
         logger.error(getStackTraceStr(e))
-        throw new Throwable("Something is wrong")
-      }
+        throw internalException()
     }
   }
 
@@ -126,15 +123,13 @@ class Utils @Inject()(client: Client, explorer: Explorer, addresses: Addresses) 
         raffleBox
       })
     } catch {
-      case e: ErgoClientException =>{
+      case e: ErgoClientException =>
         logger.warn(e.getMessage)
         throw connectionException()
-      }
-      case _: connectionException => throw connectionException()
-      case e: Throwable => {
+      case e: connectionException => throw e
+      case e: Throwable =>
         logger.error(getStackTraceStr(e))
-        throw new Throwable("Something is wrong")
-      }
+        throw internalException()
     }
   }
 
@@ -152,20 +147,16 @@ class Utils @Inject()(client: Client, explorer: Explorer, addresses: Addresses) 
         serviceBox
       })
     } catch {
-      case _: connectionException => throw connectionException()
-      case e: ErgoClientException =>{
+      case e: connectionException => throw e
+      case e: ErgoClientException =>
         logger.warn(e.getMessage)
         throw connectionException()
-      }
-      case e: explorerException => {
-        logger.warn(e.getMessage)
-        throw connectionException()
-      }
-      case _: parseException => throw connectionException()
-      case e: Throwable => {
+      case e: parseException =>
+        logger.error(e.getMessage)
+        throw internalException()
+      case e: Throwable =>
         logger.error(getStackTraceStr(e))
-        throw new Throwable("Something is wrong")
-      }
+        throw internalException()
     }
   }
 
@@ -173,7 +164,7 @@ class Utils @Inject()(client: Client, explorer: Explorer, addresses: Addresses) 
    * creates a box for the specified address and amount
    * @return input box List, is covered, covered amount
    */
-  def getCoveringBoxesWithMempool(paymentAddress: String, amount: Long): (List[InputBox], Boolean, Long) ={
+  def getCoveringBoxesWithMempool(paymentAddress: String, amount: Long): (List[InputBox], Boolean, Long) = try{
     val cover = client.getCoveringBoxesFor(Address.create(paymentAddress), amount)
     if(cover.isCovered) (cover.getBoxes.asScala.toList, true, cover.getCoveredAmount)
     else {
@@ -194,6 +185,14 @@ class Utils @Inject()(client: Client, explorer: Explorer, addresses: Addresses) 
       })
       (boxes, totalValue >= amount, totalValue)
     }
+  } catch{
+    case e: connectionException => throw e
+    case e: JsResultException =>
+      logger.error(e.getMessage)
+      throw internalException()
+    case e: Throwable =>
+      logger.error(getStackTraceStr(e))
+      throw internalException()
   }
 
 
@@ -215,14 +214,10 @@ class Utils @Inject()(client: Client, explorer: Explorer, addresses: Addresses) 
         0
       }
     } catch {
-      case e: explorerException => {
-        logger.warn(e.getMessage)
-        throw connectionException()
-      }
-      case e: Throwable => {
+      case e: connectionException => throw e
+      case e: Throwable =>
         logger.error(getStackTraceStr(e))
-        throw new Throwable("Something is wrong")
-      }
+        throw internalException()
     }
   }
 
@@ -239,18 +234,13 @@ class Utils @Inject()(client: Client, explorer: Explorer, addresses: Addresses) 
         false
       }
     } catch {
-      case e: explorerException => {
-        logger.warn(e.getMessage)
-        throw connectionException()
-      }
-      case e: parseException => {
-        logger.warn(e.getMessage)
-        throw connectionException()
-      }
-      case e: Throwable => {
+      case e: connectionException => throw e
+      case e: JsResultException =>
+        logger.error(e.getMessage)
+        throw internalException()
+      case e: Throwable =>
         logger.error(getStackTraceStr(e))
-        throw new Throwable("Something is wrong")
-      }
+        throw internalException()
     }
   }
 
@@ -263,8 +253,10 @@ class Utils @Inject()(client: Client, explorer: Explorer, addresses: Addresses) 
         throw new InvalidRecaptchaException
       }
     } catch {
-      case _: InvalidRecaptchaException => throw new InvalidRecaptchaException
-      case _: Throwable => throw new Throwable("problem in verify recaptcha")
+      case e: InvalidRecaptchaException => throw e
+      case e: Throwable =>
+        logger.error(getStackTraceStr(e))
+        throw new Throwable("problem in verifying recaptcha")
     }
   }
 

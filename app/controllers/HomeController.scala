@@ -1,7 +1,7 @@
 package controllers
 
 import dao.{CreateReqDAO, DonateReqDAO, RaffleCacheDAO, TxCacheDAO}
-import helpers.{Configs, Utils, internalException}
+import helpers.{Configs, Utils, connectionException, internalException, noRaffleException}
 import io.circe.{Json, parser}
 import io.circe.generic.codec.DerivedAsObjectCodec.deriveCodec
 import network.{Client, Explorer}
@@ -111,6 +111,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       Ok(result.toString()).as("application/json")
     }
     catch {
+      case e: noRaffleException => exception(e)
       case e: internalException => exception(e)
       case e: Throwable =>
         logger.error(utils.getStackTraceStr(e))
@@ -143,6 +144,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       Ok(result.toString()).as("application/json")
     }
     catch {
+      case e: connectionException => exception(e)
       case e: internalException => exception(e)
       case e: Throwable =>
         logger.error(utils.getStackTraceStr(e))
