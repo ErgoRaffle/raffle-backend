@@ -38,7 +38,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
             .item("tokenId", ErgoId.create(raffleId).getBytes)
             .item("userAddress", Address.create(pk).getErgoAddress.script.bytes)
             .item("ticketCount", ticketCounts)
-            .item("minFee", Configs.fee)
+            .item("maxFee", Configs.fee)
             .item("expectedDonate", expectedDonate)
             .item("raffleDeadline", raffleDeadline)
             .item("refundHeightThreshold", ctx.getHeight + Configs.expireHeight)
@@ -79,6 +79,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         val ticketSold = r4(5)
         val total_erg = req.ticketCount * ticketPrice
         r4.update(5, ticketSold + req.ticketCount)
+        val serviceAddress = utils.getAddress(raffleBox.getRegisters.get(3).getValue.asInstanceOf[Coll[Byte]].toArray)
 
         val outputRaffle = txB.outBoxBuilder()
           .value(raffleBox.getValue + total_erg)
@@ -102,7 +103,8 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
           )
           .registers(
             ErgoValue.of(Address.create(req.participantAddress).getErgoAddress.script.bytes),
-            utils.longListToErgoValue(Array(ticketSold, ticketSold + req.ticketCount, deadlineHeight, ticketPrice))
+            utils.longListToErgoValue(Array(ticketSold, ticketSold + req.ticketCount, deadlineHeight, ticketPrice)),
+            ErgoValue.of(serviceAddress.script.bytes)
           ).build()
 
         // TODO : Write service address in R6

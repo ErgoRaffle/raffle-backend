@@ -49,18 +49,17 @@ class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO, uti
         try {
           logger.info(s"Request ${req.id} is going back to the request pool, creation fee is enough")
           createReqDAO.updateTTL(req.id, client.getHeight + Configs.creationDelay)
+          throw skipException()
         } catch {
-          case _: connectionException => throw new Throwable
-          case _: failedTxException => throw new Throwable
+          case e: skipException => throw e
           case _: Throwable => logger.error(s"Checking creation request ${req.id} failed")
         }
       }
-      else {
-        logger.info(s"will remove request: ${req.id} with state: ${req.state}")
-        createReqDAO.deleteById(req.id)
-      }
     }
+    logger.info(s"will remove request: ${req.id} with state: ${req.state}")
+    createReqDAO.deleteById(req.id)
   } catch{
+    case _: skipException =>
     case _: org.ergoplatform.appkit.ErgoClientException =>
     case e: Throwable => logger.error(utils.getStackTraceStr(e))
   }
