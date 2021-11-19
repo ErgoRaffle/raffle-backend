@@ -31,13 +31,7 @@ class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO, uti
         }
       })
     })
-
-    try createReqUtils.independentMergeTxGeneration()
-    catch {
-      case _: org.ergoplatform.appkit.ErgoClientException =>
-      case _: connectionException =>
-      case e: Throwable => logger.error(utils.getStackTraceStr(e))
-    }
+    createReqUtils.independentMergeTxGeneration()
   }
 
   def handleRemoval(req: CreateReq): Unit = try {
@@ -166,7 +160,7 @@ class DonateReqHandler@Inject ()(client: Client, donateReqDAO: DonateReqDAO, uti
             return outputMap
           }
           catch {
-            case e: Throwable => logger.info(s"Donation failed for request ${req.id}")
+            case _: Throwable => logger.info(s"Donation failed for request ${req.id}")
           }
         }
       }

@@ -1,18 +1,18 @@
 package raffle
 
 import java.time.LocalDateTime
-
 import dao.CreateReqDAO
-import helpers.{Configs, Utils, connectionException, failedTxException, paymentNotCoveredException, proveException}
+import helpers.{Configs, Utils, connectionException, failedTxException, parseException, paymentNotCoveredException, proveException}
 import io.circe.{Json, parser}
 import io.circe.syntax._
 import network.{Client, Explorer}
+
 import javax.inject.Inject
 import models.CreateReq
-import org.ergoplatform.appkit.impl.{ErgoTreeContract, InputBoxImpl}
-import org.ergoplatform.appkit.{Address, BlockchainContext, ConstantsBuilder, ErgoId, ErgoToken, ErgoType, ErgoValue, InputBox, JavaHelpers, SignedTransaction}
+import org.ergoplatform.appkit.impl.ErgoTreeContract
+import org.ergoplatform.appkit.{Address, BlockchainContext, ErgoClientException, ErgoId, ErgoToken, ErgoType, ErgoValue, InputBox, SignedTransaction}
 import play.api.Logger
-import special.collection.{Coll, CollOverArray}
+import special.collection.Coll
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable.Seq
@@ -183,22 +183,22 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
     } catch {
       case e: connectionException => throw e
       case e: proveException => throw e
-      case e: failedTxException => {
+      case e: ErgoClientException =>
+        logger.warn(e.getMessage)
+        throw connectionException()
+      case e: failedTxException =>
         logger.warn(e.getMessage)
         throw e
-      }
-      case e: paymentNotCoveredException => {
+      case e: paymentNotCoveredException =>
         logger.warn(e.getMessage)
         throw e
-      }
-      case e: Throwable => {
+      case e: Throwable =>
         logger.error(utils.getStackTraceStr(e))
         throw new Throwable("Error in new raffle creation")
-      }
     }
   }
 
-  def independentMergeTxGeneration(): Unit ={
+  def independentMergeTxGeneration(): Unit = try{
     client.getClient.execute(ctx => {
       val raffleWaitingTokenAdd = Address.fromErgoTree(addresses.getRaffleWaitingTokenContract().getErgoTree, Configs.networkType)
       val raffleWaitingTokenBoxes = client.getAllUnspentBox(raffleWaitingTokenAdd)
@@ -208,7 +208,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         try {
           val tokenId = new ErgoId(box.getRegisters.get(4).getValue.asInstanceOf[Coll[Byte]].toArray)
           val tokenBoxId = explorer.getUnspentTokenBoxes(tokenId.toString, 0, 100)
-            .hcursor.downField("items").as[Seq[Json]].getOrElse(throw new Throwable("parse error")).head
+            .hcursor.downField("items").as[Seq[Json]].getOrElse(throw parseException()).head
             .hcursor.downField("boxId").as[String].getOrElse(null)
           val tokenBox = ctx.getBoxesById(tokenBoxId).head
           if(!utils.isBoxInMemPool(tokenBox)){
@@ -219,9 +219,16 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
             logger.info(s"Merge Tx for raffle ${tokenId} sent with txId: " + mergeTxId)
           }
         } catch {
+          case e: parseException => logger.warn(e.getMessage)
+          case _: connectionException =>
+          case e: org.ergoplatform.appkit.ErgoClientException => logger.warn(e.getMessage)
           case e: Throwable => logger.warn(e.getMessage + s" in raffle mergeTx")
         }
       })
     })
+  } catch {
+    case _: org.ergoplatform.appkit.ErgoClientException =>
+    case _: connectionException =>
+    case e: Throwable => logger.error(utils.getStackTraceStr(e))
   }
 }

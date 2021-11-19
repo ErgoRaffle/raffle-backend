@@ -2,13 +2,13 @@ package raffle
 
 import java.time.LocalDateTime
 import dao.{DonateReqDAO, RaffleCacheDAO}
-import helpers.{Configs, Utils, connectionException, failedTxException, finishedRaffleException, paymentNotCoveredException, proveException}
+import helpers.{Configs, Utils, connectionException, failedTxException, finishedRaffleException, internalException, paymentNotCoveredException, proveException}
 
 import javax.inject.Inject
-import models.DonateReq
+import models.{DonateReq, Raffle}
 import network.Client
 import org.ergoplatform.ErgoAddress
-import org.ergoplatform.appkit.{Address, ErgoToken, ErgoValue, InputBox, SignedTransaction}
+import org.ergoplatform.appkit.{Address, ErgoClientException, ErgoToken, ErgoValue, InputBox, SignedTransaction}
 import special.collection.CollOverArray
 import play.api.Logger
 
@@ -50,18 +50,16 @@ class DonateReqUtils @Inject()(client: Client, utils: Utils, donateReqDAO: Donat
   def createDonateTx(req: DonateReq, raffleBox: InputBox): InputBox = {
     try {
       client.getClient.execute(ctx => {
-        val r4 = raffleBox.getRegisters.get(0).getValue.asInstanceOf[CollOverArray[Long]].toArray.clone()
-        val ticketPrice: Long = r4(2)
+        val raffleInfo = Raffle(raffleBox, utils)
 
         val paymentBoxCover = utils.getCoveringBoxesWithMempool(req.paymentAddress, req.fee)
         if (!paymentBoxCover._2) throw paymentNotCoveredException(s"Donation payment for request ${req.id} not covered the fee, request state is ${req.state} and request tx is ${req.donateTxID.orNull}")
         logger.debug(s"Payment covered amount for request ${req.id} is ${paymentBoxCover._3}")
 
         val txB = ctx.newTxBuilder()
-        val deadlineHeight = r4(4)
-        val ticketSold = r4(5)
-        val total_erg = req.ticketCount * ticketPrice
-        r4.update(5, ticketSold + req.ticketCount)
+        val total_erg = req.ticketCount * raffleInfo.ticketPrice
+        val r4 = raffleBox.getRegisters.get(0).getValue.asInstanceOf[CollOverArray[Long]].toArray.clone()
+        r4.update(5, raffleInfo.tickets + req.ticketCount)
 
         val outputRaffle = txB.outBoxBuilder()
           .value(raffleBox.getValue + total_erg)
@@ -85,7 +83,7 @@ class DonateReqUtils @Inject()(client: Client, utils: Utils, donateReqDAO: Donat
           )
           .registers(
             ErgoValue.of(Address.create(req.participantAddress).getErgoAddress.script.bytes),
-            utils.longListToErgoValue(Array(ticketSold, ticketSold + req.ticketCount, deadlineHeight, ticketPrice))
+            utils.longListToErgoValue(Array(raffleInfo.tickets, raffleInfo.tickets + req.ticketCount, raffleInfo.deadlineHeight, raffleInfo.ticketPrice))
           ).build()
 
         var change = paymentBoxCover._3 - req.fee
@@ -106,11 +104,10 @@ class DonateReqUtils @Inject()(client: Client, utils: Utils, donateReqDAO: Donat
           signedTx = prover.sign(tx)
           logger.debug(s"create tx for request ${req.id} proved successfully")
         } catch {
-          case e: Throwable => {
+          case e: Throwable =>
             logger.error(utils.getStackTraceStr(e))
             logger.error(s"create tx for request ${req.id} proving failed")
             throw proveException()
-          }
         }
 
         var txId = ctx.sendTransaction(signedTx)
@@ -123,18 +120,19 @@ class DonateReqUtils @Inject()(client: Client, utils: Utils, donateReqDAO: Donat
       })
     } catch {
       case e: connectionException => throw e
-      case e: proveException => throw e
-      case e:failedTxException => {
+      case _: proveException => throw internalException()
+      case e: failedTxException =>
         logger.warn(e.getMessage)
-        throw failedTxException()
-      }
-      case e:paymentNotCoveredException => {
+        throw internalException()
+      case e: ErgoClientException =>
         logger.warn(e.getMessage)
-        throw paymentNotCoveredException()
-      }
+        throw connectionException()
+      case e: paymentNotCoveredException =>
+        logger.warn(e.getMessage)
+        throw internalException()
       case e: Throwable =>
         logger.error(utils.getStackTraceStr(e))
-        throw new Throwable("Something is wrong on donating")
+        throw internalException()
     }
   }
 

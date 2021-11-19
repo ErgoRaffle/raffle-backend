@@ -1,6 +1,6 @@
 package raffle
 
-import helpers.{Configs, Utils, connectionException, failedTxException, parseException, proveException}
+import helpers.{Configs, Utils, connectionException, failedTxException, internalException, parseException, proveException}
 import io.circe.Json
 import models.Raffle
 import network.{Client, Explorer}
@@ -76,63 +76,53 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
           val signedTx = prover.sign(tx)
           signedTx
         } catch {
-          case e: Throwable => {
+          case e: Throwable =>
             logger.error(s"raffle ${raffleBox.getTokens.get(1).getId} final tx proving failed")
             logger.error(utils.getStackTraceStr(e))
             throw proveException()
-          }
         }
       } else {
         null
       }
     }
     catch {
-      case _: parseException => throw connectionException()
-      case e: ErgoClientException => {
+      case e: parseException =>
+        logger.warn(e.getMessage)
+        throw internalException()
+      case e: ErgoClientException =>
         logger.warn(e.getMessage)
         throw connectionException()
-      }
-      case e: proveException => throw e
-      case e: Throwable => {
+      case _: proveException => throw internalException()
+      case e: Throwable =>
         logger.error(s"raffle ${raffleBox.getTokens.get(1).getId} final tx generation failed")
         logger.error(utils.getStackTraceStr(e))
         throw e
-      }
     }
   }
 
   def getWinner(ctx: BlockchainContext, serviceToken: String, winNumber: Long): InputBox = {
-    try {
-      var result: InputBox = null
-      var remain = true
-      var offset = 0
-      while (result == null && remain) {
-        val boxes = explorer.getUnspentTokenBoxes(serviceToken, offset, 100).hcursor.downField("items").as[List[Json]].getOrElse(throw parseException())
-        val filteredBoxes = boxes.filter(box => {
-          try {
-            val r5Hex = box.hcursor.downField("additionalRegisters").as[Json].getOrElse(null).hcursor.downField("R5").as[Json].getOrElse(null)
-              .hcursor.downField("serializedValue").as[String].getOrElse("")
-            val r5 = ErgoValue.fromHex(r5Hex).getValue.asInstanceOf[Coll[Long]].toArray
-            r5(0) <= winNumber && r5(1) > winNumber
-          } catch {
-            case _: Throwable => false
-          }
-        })
-        offset += 100
-        remain = boxes.nonEmpty
-        if (filteredBoxes.nonEmpty) {
-          result = ctx.getBoxesById(filteredBoxes.head.hcursor.downField("boxId").as[String].getOrElse(throw parseException())).head
+    var result: InputBox = null
+    var remain = true
+    var offset = 0
+    while (result == null && remain) {
+      val boxes = explorer.getUnspentTokenBoxes(serviceToken, offset, 100).hcursor.downField("items").as[List[Json]].getOrElse(throw parseException())
+      val filteredBoxes = boxes.filter(box => {
+        try {
+          val r5Hex = box.hcursor.downField("additionalRegisters").as[Json].getOrElse(null).hcursor.downField("R5").as[Json].getOrElse(null)
+            .hcursor.downField("serializedValue").as[String].getOrElse("")
+          val r5 = ErgoValue.fromHex(r5Hex).getValue.asInstanceOf[Coll[Long]].toArray
+          r5(0) <= winNumber && r5(1) > winNumber
+        } catch {
+          case _: Throwable => false
         }
+      })
+      offset += 100
+      remain = boxes.nonEmpty
+      if (filteredBoxes.nonEmpty) {
+        result = ctx.getBoxesById(filteredBoxes.head.hcursor.downField("boxId").as[String].getOrElse(throw parseException())).head
       }
-      result
-    } catch {
-      case _: parseException => throw connectionException()
-      case e: ErgoClientException => {
-        logger.error(e.getMessage)
-        throw connectionException()
-      }
-      case e: Throwable => throw e
     }
+    result
   }
 
   def withdrawReward(ctx: BlockchainContext, serviceBox: InputBox, raffleBox: InputBox): SignedTransaction = {
@@ -169,19 +159,24 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
         val signedTx = prover.sign(tx)
         signedTx
       } catch {
-        case e: Throwable => {
+        case e: Throwable =>
           logger.error(s"raffle ${raffleBox.getTokens.get(1).getId} winner reward tx proving failed")
           logger.error(utils.getStackTraceStr(e))
           throw proveException()
-        }
       }
     } catch {
+      case e: parseException =>
+        logger.warn(e.getMessage)
+        throw internalException()
+      case e: ErgoClientException =>
+        logger.error(e.getMessage)
+        throw connectionException()
       case _: connectionException => throw connectionException()
-      case e: Throwable => {
+      case _: proveException => throw internalException()
+      case e: Throwable =>
         logger.error(s"raffle ${raffleBox.getTokens.get(1).getId.toString} winner reward withdraw tx generation failed")
         logger.error(utils.getStackTraceStr(e))
         throw e
-      }
     }
   }
 
@@ -210,11 +205,10 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
         val signedTx = prover.sign(tx)
         signedTx
       } catch {
-        case e: Throwable => {
+        case e: Throwable =>
           logger.error(s"raffle ${raffleBox.getTokens.get(1).getId} final fail tx proving failed")
           logger.error(utils.getStackTraceStr(e))
           throw proveException()
-        }
       }
     } catch {
       case e: proveException => throw e
@@ -386,12 +380,9 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
       }
     } catch {
       case _: connectionException =>
-      case e: failedTxException => {
-        logger.error(e.getMessage)
-      }
-      case e: Throwable => {
-        logger.warn(e.getMessage)
-      }
+      case _: internalException =>
+      case e: failedTxException => logger.error(e.getMessage)
+      case e: Throwable => logger.error(e.getMessage)
     }
   }
 
@@ -473,6 +464,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
         })
     } catch {
       case _: connectionException =>
+      case _: internalException =>
       case e: Throwable => logger.error(e.getMessage)
     }
   }
