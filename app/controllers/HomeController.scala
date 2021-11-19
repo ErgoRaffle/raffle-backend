@@ -6,25 +6,23 @@ import io.circe.{Json, parser}
 import io.circe.generic.codec.DerivedAsObjectCodec.deriveCodec
 import network.{Client, Explorer}
 import raffle.{Addresses, CreateReqUtils, DonateReqUtils, RaffleUtils, raffleStatus, txType}
-import raffle.txType._
 import raffle.raffleStatus._
 import play.api.Logger
 import play.api.libs.circe.Circe
 import play.api.mvc._
 
 import javax.inject._
-import models.{CreateReq, DonateReq, Raffle, TxCache}
+import models.{CreateReq, DonateReq, TxCache}
 import org.ergoplatform.appkit.Address
 
-import java.lang
 import scala.collection.mutable.{ListBuffer, Seq}
 
 
 @Singleton
-class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: Explorer, donateReqUtils: DonateReqUtils,
-                               client: Client, createReqUtils: CreateReqUtils, raffleUtils: RaffleUtils, utils: Utils,
-                               createReqDAO: CreateReqDAO, donateReqDAO: DonateReqDAO, raffleCacheDAO: RaffleCacheDAO,
-                               txCacheDAO: TxCacheDAO, val controllerComponents: ControllerComponents) extends BaseController
+class HomeController @Inject()(assets: Assets, donateReqUtils: DonateReqUtils, client: Client, createReqUtils: CreateReqUtils,
+                               raffleUtils: RaffleUtils, utils: Utils, createReqDAO: CreateReqDAO, donateReqDAO: DonateReqDAO,
+                               raffleCacheDAO: RaffleCacheDAO, txCacheDAO: TxCacheDAO,
+                               val controllerComponents: ControllerComponents) extends BaseController
   with Circe {
   private val logger: Logger = Logger(this.getClass)
 
@@ -111,6 +109,7 @@ class HomeController @Inject()(assets: Assets, addresses: Addresses, explorer: E
       Ok(result.toString()).as("application/json")
     }
     catch {
+      case e: connectionException => exception(e)
       case e: noRaffleException => exception(e)
       case e: internalException => exception(e)
       case e: Throwable =>

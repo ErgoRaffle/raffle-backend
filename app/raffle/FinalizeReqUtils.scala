@@ -1,12 +1,13 @@
 package raffle
 
-import com.google.protobuf.TextFormat.ParseException
 import helpers.{Configs, Utils, connectionException, failedTxException, parseException, proveException}
 import io.circe.Json
+import models.Raffle
 import network.{Client, Explorer}
 import org.ergoplatform.appkit.impl.ErgoTreeContract
 import org.ergoplatform.appkit._
-import special.collection.{Coll, CollOverArray}
+import special.collection.Coll
+
 import javax.inject.Inject
 import play.api.Logger
 
@@ -31,22 +32,17 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
         .hcursor.downField("items").as[List[Json]].getOrElse(throw parseException())
         .head
       val creationHeight = boxJson.hcursor.downField("creationHeight").as[Long].getOrElse(throw parseException())
-      val r4 = raffleBox.getRegisters.get(0).getValue.asInstanceOf[CollOverArray[Long]].toArray
-      logger.info(s"Oracle box height is ${creationHeight} and raffle deadline is ${r4(4)}")
-      if (creationHeight > r4(4)) {
+      val raffleInfo = Raffle(raffleBox, utils)
+      logger.info(s"Oracle box height is ${creationHeight} and raffle deadline is ${raffleInfo.deadlineHeight}")
+      if (creationHeight > raffleInfo.deadlineHeight) {
         val boxId = boxJson.hcursor.downField("boxId").as[String].getOrElse("")
         val box = ctx.getBoxesById(boxId).head
-        val charity = r4(0)
-        val service = r4(1)
-        val ticketPrice = r4(2)
-        val totalSoldTicket = r4(5)
         val winBytes = box.getId.getBytes.slice(0, 15)
-        val winNumber = (((BigInt(winBytes) % totalSoldTicket) + totalSoldTicket) % totalSoldTicket).toLong
+        val winNumber = (((BigInt(winBytes) % raffleInfo.tickets) + raffleInfo.tickets) % raffleInfo.tickets).toLong
         logger.info(s"winner number is ${winNumber} in raffle ${raffleBox.getTokens.get(1).getId}")
-        val totalEarning = ticketPrice * totalSoldTicket
-        val charityAmount = charity * totalEarning / 100
-        val serviceAmount = service * totalEarning / 100
-        val charityAddress = utils.getAddress(raffleBox.getRegisters.get(1).getValue.asInstanceOf[Coll[Byte]].toArray)
+        val totalEarning = raffleInfo.ticketPrice * raffleInfo.tickets
+        val charityAmount = raffleInfo.charityPercent * totalEarning / 100
+        val serviceAmount = raffleInfo.serviceFee * totalEarning / 100
         val serviceAddress = utils.getAddress(raffleBox.getRegisters.get(3).getValue.asInstanceOf[Coll[Byte]].toArray)
         val winnerAmount = raffleBox.getValue - charityAmount - serviceAmount - Configs.fee
         val newRaffleBox = txB.outBoxBuilder()
@@ -54,7 +50,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
           .contract(addresses.getRaffleWinnerContract())
           .tokens(raffleBox.getTokens.get(0), raffleBox.getTokens.get(1))
           .registers(
-            utils.longListToErgoValue(r4),
+            raffleBox.getRegisters.get(0),
             raffleBox.getRegisters.get(1),
             raffleBox.getRegisters.get(2),
             raffleBox.getRegisters.get(3),
@@ -63,7 +59,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
           .build()
         val charityBox = txB.outBoxBuilder()
           .value(charityAmount)
-          .contract(new ErgoTreeContract(charityAddress.script))
+          .contract(new ErgoTreeContract(Address.create(raffleInfo.charityAddr).getErgoAddress.script))
           .build()
         val serviceBox = txB.outBoxBuilder()
           .value(serviceAmount)

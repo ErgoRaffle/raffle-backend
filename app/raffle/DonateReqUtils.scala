@@ -1,52 +1,36 @@
 package raffle
 
 import java.time.LocalDateTime
-
-import dao.DonateReqDAO
+import dao.{DonateReqDAO, RaffleCacheDAO}
 import helpers.{Configs, Utils, connectionException, failedTxException, finishedRaffleException, paymentNotCoveredException, proveException}
+
 import javax.inject.Inject
 import models.DonateReq
-import network.{Client, Explorer}
+import network.Client
 import org.ergoplatform.ErgoAddress
-import org.ergoplatform.appkit.{Address, BlockchainContext, ConstantsBuilder, ErgoId, ErgoToken, ErgoValue, InputBox, SignedTransaction}
-import special.collection.{Coll, CollOverArray}
+import org.ergoplatform.appkit.{Address, ErgoToken, ErgoValue, InputBox, SignedTransaction}
+import special.collection.CollOverArray
 import play.api.Logger
 
 import scala.collection.mutable.Seq
 import scala.collection.JavaConverters._
 
 
-class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, raffleContract: RaffleContract,
-                               donateReqDAO: DonateReqDAO, addresses: Addresses){
+class DonateReqUtils @Inject()(client: Client, utils: Utils, donateReqDAO: DonateReqDAO, addresses: Addresses, raffleCacheDAO: RaffleCacheDAO){
   private val logger: Logger = Logger(this.getClass)
 
   def findProxyAddress(pk: String, raffleId: String, ticketCounts: Long): (String, Long, Long) = {
     try {
       client.getClient.execute(ctx => {
-        val raffleBox = utils.getRaffleBox(raffleId)
-
-        val r4 = raffleBox.getRegisters.get(0).getValue.asInstanceOf[CollOverArray[Long]].toArray.clone()
-        val ticketPrice = r4(2)
-        val expectedDonate = (ticketPrice * ticketCounts) + (Configs.fee * 2)
-        val raffleDeadline = r4(4)
-        if (raffleDeadline < ctx.getHeight) {
+        val raffle = raffleCacheDAO.byTokenId(raffleId)
+        val expectedDonate = (raffle.ticketPrice * ticketCounts) + (Configs.fee * 2)
+        if (raffle.deadlineHeight < ctx.getHeight) {
           throw finishedRaffleException(s"raffle ${raffleId} has finished can not create proxy address")
         }
 
-        val donateContract = ctx.compileContract(
-          ConstantsBuilder.create()
-            .item("tokenId", ErgoId.create(raffleId).getBytes)
-            .item("userAddress", Address.create(pk).getErgoAddress.script.bytes)
-            .item("ticketCount", ticketCounts)
-            .item("minFee", Configs.fee)
-            .item("expectedDonate", expectedDonate)
-            .item("raffleDeadline", raffleDeadline)
-            .build(),
-          raffleContract.donateScript)
-
+        val donateContract = addresses.getRaffleDonateProxyContract(pk, raffleId, ticketCounts, raffle.deadlineHeight)
         val feeEmissionAddress: ErgoAddress = Configs.addressEncoder.fromProposition(donateContract.getErgoTree).get
-
-        val req: DonateReq = donateReqDAO.insert(ticketCounts, expectedDonate, raffleDeadline, 0, feeEmissionAddress.toString, raffleId,
+        val req: DonateReq = donateReqDAO.insert(ticketCounts, expectedDonate, raffle.deadlineHeight, 0, feeEmissionAddress.toString, raffleId,
           null, pk, LocalDateTime.now().toString, client.getHeight + Configs.creationDelay)
         logger.debug("Donate payment address created")
 

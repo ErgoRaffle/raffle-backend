@@ -1,6 +1,5 @@
 package helpers
 
-import java.math.BigInteger
 import org.ergoplatform.ErgoAddressEncoder
 import org.ergoplatform.appkit.{Address, NetworkType}
 
