@@ -38,9 +38,10 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
             .item("tokenId", ErgoId.create(raffleId).getBytes)
             .item("userAddress", Address.create(pk).getErgoAddress.script.bytes)
             .item("ticketCount", ticketCounts)
-            .item("minFee", Configs.fee)
+            .item("maxFee", Configs.fee)
             .item("expectedDonate", expectedDonate)
             .item("raffleDeadline", raffleDeadline)
+            .item("refundHeightThreshold", ctx.getHeight + Configs.expireHeight)
             .build(),
           raffleContract.donateScript)
 
@@ -78,10 +79,11 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         val ticketSold = r4(5)
         val total_erg = req.ticketCount * ticketPrice
         r4.update(5, ticketSold + req.ticketCount)
+        val serviceAddress = utils.getAddress(raffleBox.getRegisters.get(3).getValue.asInstanceOf[Coll[Byte]].toArray)
 
         val outputRaffle = txB.outBoxBuilder()
           .value(raffleBox.getValue + total_erg)
-          .contract(addresses.getRaffleActiveContract())
+          .contract(addresses.raffleActiveContract)
           .tokens(
             raffleBox.getTokens.get(0),
             new ErgoToken(raffleBox.getTokens.get(1).getId, raffleBox.getTokens.get(1).getValue - req.ticketCount)
@@ -95,7 +97,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
 
         val ticketOutput = txB.outBoxBuilder()
           .value(Configs.fee)
-          .contract(addresses.getTicketContract())
+          .contract(addresses.ticketContract)
           .tokens(
             new ErgoToken(raffleBox.getTokens.get(1).getId, req.ticketCount)
           )

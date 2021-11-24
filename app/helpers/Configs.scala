@@ -1,6 +1,5 @@
 package helpers
 
-import java.math.BigInteger
 import org.ergoplatform.ErgoAddressEncoder
 import org.ergoplatform.appkit.{Address, NetworkType}
 
@@ -20,6 +19,7 @@ object Configs extends ConfigHelper {
   lazy val serviceOwner: Address = Address.create(readKey("service.owner"))
   lazy val serviceFeeAddress: Address = Address.create(readKey("service.feeAddress"))
 
+  lazy val expireHeight: Long = readKey("expireHeight").toLong
   lazy val creationDelay: Int = readKey("creationDelay").toInt
   lazy val infBoxVal: Long = readKey("infBoxVal").toLong
 

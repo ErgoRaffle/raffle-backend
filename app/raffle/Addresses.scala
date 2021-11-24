@@ -9,21 +9,21 @@ import javax.inject.Inject
 
 
 class Addresses @Inject()(client: Client, contract: RaffleContract){
-  private lazy val tokenRepo: ErgoContract = generateTokenRepo()
-  private lazy val service: ErgoContract = generateService()
-  private lazy val ticket: ErgoContract = generateTicket()
-  private lazy val raffleInactive: ErgoContract = generateRaffleWaitingToken()
-  private lazy val raffleActive: ErgoContract = generateRaffleActive()
-  private lazy val raffleWinner: ErgoContract = generateRaffleWinner()
-  private lazy val raffleRedeem: ErgoContract = generateRaffleRedeem()
+  lazy val tokenRepoContract: ErgoContract = generateTokenRepo()
+  lazy val serviceContract: ErgoContract = generateService()
+  lazy val ticketContract: ErgoContract = generateTicket()
+  lazy val raffleInactiveContract: ErgoContract = generateRaffleWaitingToken()
+  lazy val raffleActiveContract: ErgoContract = generateRaffleActive()
+  lazy val raffleWinnerContract: ErgoContract = generateRaffleWinner()
+  lazy val raffleRedeemContract: ErgoContract = generateRaffleRedeem()
 
-  lazy val tokenRepoAddress: Address = generateAddress(tokenRepo)
-  lazy val serviceAddress: Address = generateAddress(service)
-  lazy val ticketAddress: Address = generateAddress(ticket)
-  lazy val raffleInactiveAddress: Address = generateAddress(raffleInactive)
-  lazy val raffleActiveAddress: Address = generateAddress(raffleActive)
-  lazy val raffleWinnerAddress: Address = generateAddress(raffleWinner)
-  lazy val raffleRedeemAddress: Address = generateAddress(raffleRedeem)
+  lazy val tokenRepoAddress: Address = generateAddress(tokenRepoContract)
+  lazy val serviceAddress: Address = generateAddress(serviceContract)
+  lazy val ticketAddress: Address = generateAddress(ticketContract)
+  lazy val raffleInactiveAddress: Address = generateAddress(raffleInactiveContract)
+  lazy val raffleActiveAddress: Address = generateAddress(raffleActiveContract)
+  lazy val raffleWinnerAddress: Address = generateAddress(raffleWinnerContract)
+  lazy val raffleRedeemAddress: Address = generateAddress(raffleRedeemContract)
 
   private def generateAddress(contract: ErgoContract): Address ={
     Address.create(Configs.addressEncoder.fromProposition(contract.getErgoTree).get.toString)
@@ -53,9 +53,9 @@ class Addresses @Inject()(client: Client, contract: RaffleContract){
 
   private def generateRaffleActive(): ErgoContract ={
     client.getClient.execute((ctx: BlockchainContext) => {
-      val raffleRedeemScriptHash = getContractScriptHash(raffleRedeem)
-      val raffleWinnerScriptHash = getContractScriptHash(raffleWinner)
-      val ticketScriptHash = getContractScriptHash(ticket)
+      val raffleRedeemScriptHash = getContractScriptHash(raffleRedeemContract)
+      val raffleWinnerScriptHash = getContractScriptHash(raffleWinnerContract)
+      val ticketScriptHash = getContractScriptHash(ticketContract)
       ctx.compileContract(ConstantsBuilder.create()
         .item("winnerScriptHash", raffleWinnerScriptHash)
         .item("ticketScriptHash", ticketScriptHash)
@@ -70,7 +70,7 @@ class Addresses @Inject()(client: Client, contract: RaffleContract){
 
   private def generateRaffleWaitingToken(): ErgoContract ={
     client.getClient.execute((ctx: BlockchainContext) => {
-      val raffleActiveScriptHash = getContractScriptHash(raffleActive)
+      val raffleActiveScriptHash = getContractScriptHash(raffleActiveContract)
       ctx.compileContract(ConstantsBuilder.create()
         .item("raffleActiveServiceToken", ErgoId.create(Configs.token.service).getBytes)
         .item("raffleActiveHash", raffleActiveScriptHash)
@@ -93,14 +93,16 @@ class Addresses @Inject()(client: Client, contract: RaffleContract){
         .item("raffleServiceToken", ErgoId.create(Configs.token.service).getBytes)
         .item("raffleNFT", ErgoId.create(Configs.token.nft).getBytes)
         .item("fee", Configs.fee)
+        .item("ExpireHeight", Configs.expireHeight)
+        .item("ownerPk", Configs.serviceOwner.getPublicKey)
         .build(), contract.ticketScript)
     })
   }
 
   private def generateService(): ErgoContract = {
     client.getClient.execute((ctx: BlockchainContext) => {
-      val raffleScriptHash = getContractScriptHash(raffleInactive)
-      val tokenIssueScriptHash: Digest32 = getContractScriptHash(tokenRepo)
+      val raffleScriptHash = getContractScriptHash(raffleInactiveContract)
+      val tokenIssueScriptHash: Digest32 = getContractScriptHash(tokenRepoContract)
       ctx.compileContract(ConstantsBuilder.create()
         .item("raffleScriptHash", raffleScriptHash)
         .item("raffleTokenIssueHash", tokenIssueScriptHash)
@@ -112,42 +114,18 @@ class Addresses @Inject()(client: Client, contract: RaffleContract){
     })
   }
 
-  // TODO remove these
-  def getRaffleServiceContract(): ErgoContract = {
-    service
-  }
-
-  def getTicketContract(): ErgoContract = {
-    ticket
-  }
-
-  def getRaffleTokenIssueContract(): ErgoContract = {
-    tokenRepo
-  }
-
-  def getRaffleWaitingTokenContract(): ErgoContract = {
-    raffleInactive
-  }
-
-  def getRaffleActiveContract(): ErgoContract = {
-    raffleActive
-  }
-
-  def getRaffleWinnerContract(): ErgoContract = {
-    raffleWinner
-  }
-
-  def getRaffleRedeemContract(): ErgoContract = {
-    raffleRedeem
-  }
-
   def getRaffleCreateProxyContract(pk: String, charity: Long, name: String, description: String, deadlineHeight: Long,
-                                   charityAddr: String, goal: Long, ticketPrice: Long): String = {
+                                   charityAddr: String, goal: Long, ticketPrice: Long, picLinks: List[String]): String = {
     client.getClient.execute((ctx: BlockchainContext) => {
-      val proxyContract = ctx.compileContract(ConstantsBuilder.create()
+      var pictureConstraints: String = ""
+      for(i <- picLinks.indices){
+        pictureConstraints += s"OUTPUTS(1).R6[Coll[Coll[Byte]]].get(${i+2}) == link$i,\n"
+      }
+      val updateContract = contract.createRaffleProxyScript.format(pictureConstraints)
+      val constants = ConstantsBuilder.create()
         .item("userAddress", Address.create(pk).getErgoAddress.script.bytes)
         .item("minFee", Configs.fee)
-        .item("refundHeightThreshold", ctx.getHeight + ((Configs.creationDelay / 60 / 2) + 1).toLong)
+        .item("refundHeightThreshold", ctx.getHeight + Configs.expireHeight)
         .item("charityCoef", charity)
         .item("ticketPrice", ticketPrice)
         .item("goal", goal)
@@ -155,7 +133,13 @@ class Addresses @Inject()(client: Client, contract: RaffleContract){
         .item("raffleServiceNFT", ErgoId.create(Configs.token.nft).getBytes)
         .item("raffleServiceToken", ErgoId.create(Configs.token.service).getBytes)
         .item("charityAddress", Address.create(charityAddr).getErgoAddress.script.bytes)
-        .build(), contract.createRaffleProxyScript)
+        .item("name", name.getBytes("utf-8"))
+        .item("description", description.getBytes("utf-8"))
+        .item("maxFee", Configs.fee)
+      for(i <- picLinks.indices){
+        constants.item(s"link$i", picLinks(i).getBytes("utf-8"))
+      }
+      val proxyContract = ctx.compileContract(constants.build(), updateContract)
       Configs.addressEncoder.fromProposition(proxyContract.getErgoTree).get.toString
     })
   }

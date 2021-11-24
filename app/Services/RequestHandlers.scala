@@ -1,7 +1,7 @@
 package Services
 import helpers.{Configs, Utils, connectionException, failedTxException, skipException}
 import javax.inject.Inject
-import network.{Client}
+import network.Client
 import play.api.Logger
 import raffle.{CreateReqUtils, DonateReqUtils, FinalizeReqUtils, RaffleUtils}
 import dao.{CreateReqDAO, DonateReqDAO}
@@ -21,7 +21,7 @@ class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO, uti
       var serviceBox : InputBox = null
       requests.get.map(req => {
         try{
-          if (req.ttl <= utils.currentTime || req.state == 2) {
+          if (req.ttl <= client.getHeight || req.state == 2) {
             handleRemoval(req)
           } else {
             serviceBox = handleReq(req, serviceBox)
@@ -45,24 +45,21 @@ class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO, uti
     logger.info("Trying to remove request " + req.id)
 
     if (unSpentPayment._1.nonEmpty) {
-      try {
-        if (unSpentPayment._3 >= Configs.creationFee) {
+      if (unSpentPayment._3 >= Configs.creationFee) {
+        try {
           logger.info(s"Request ${req.id} is going back to the request pool, creation fee is enough")
           createReqDAO.updateTTL(req.id, client.getHeight + Configs.creationDelay)
           throw skipException()
+        } catch {
+          case e: skipException => throw e
+          case _: Throwable => logger.error(s"Checking creation request ${req.id} failed")
         }
-      } catch {
-        case _: connectionException => throw new Throwable
-        case _: failedTxException => throw new Throwable
-        case e: skipException => throw e
-        case _: Throwable => logger.error(s"Checking creation request ${req.id} failed")
       }
     }
-    else {
-      logger.info(s"will remove request: ${req.id} with state: ${req.state}")
-      createReqDAO.deleteById(req.id)
-    }
+    logger.info(s"will remove request: ${req.id} with state: ${req.state}")
+    createReqDAO.deleteById(req.id)
   } catch{
+    case _: skipException =>
     case _: org.ergoplatform.appkit.ErgoClientException =>
     case e: Throwable => logger.error(utils.getStackTraceStr(e))
   }

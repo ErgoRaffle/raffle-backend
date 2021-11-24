@@ -51,7 +51,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
         val winnerAmount = raffleBox.getValue - charityAmount - serviceAmount - Configs.fee
         val newRaffleBox = txB.outBoxBuilder()
           .value(winnerAmount)
-          .contract(addresses.getRaffleWinnerContract())
+          .contract(addresses.raffleWinnerContract)
           .tokens(raffleBox.getTokens.get(0), raffleBox.getTokens.get(1))
           .registers(
             utils.longListToErgoValue(r4),
@@ -148,7 +148,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
         .build()
       val serviceOutput = txB.outBoxBuilder()
         .value(serviceBox.getValue)
-        .contract(addresses.getRaffleServiceContract())
+        .contract(addresses.serviceContract)
         .tokens(
           new ErgoToken(Configs.token.nft, 1),
           new ErgoToken(Configs.token.service, serviceBox.getTokens.get(1).getValue + raffleBox.getTokens.get(0).getValue)
@@ -198,7 +198,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
       val raffleOutput = txB.outBoxBuilder()
         .value(raffleBox.getValue - Configs.fee)
         .tokens(raffleBox.getTokens.get(0), raffleBox.getTokens.get(1))
-        .contract(addresses.getRaffleRedeemContract())
+        .contract(addresses.raffleRedeemContract)
         .registers(
           raffleBox.getRegisters.get(0),
           raffleBox.getRegisters.get(1),
@@ -245,7 +245,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
         raffleBox.getTokens.get(0),
         new ErgoToken(raffleBox.getTokens.get(1).getId, raffleBox.getTokens.get(1).getValue + donation.getTokens.get(0).getValue)
       )
-      .contract(addresses.getRaffleRedeemContract())
+      .contract(addresses.raffleRedeemContract)
       .registers(
         utils.longListToErgoValue(raffleR4),
         raffleBox.getRegisters.get(1),
@@ -320,7 +320,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
           .hcursor.downField("items").as[List[Json]].getOrElse(throw parseException())
 
         boxes.filter(ticket => {
-          ticket.hcursor.downField("address").as[String].getOrElse("") == Configs.addressEncoder.fromProposition(addresses.getTicketContract().getErgoTree).get.toString
+          ticket.hcursor.downField("address").as[String].getOrElse("") == addresses.ticketAddress.toString
         }).foreach(ticket => {
           try {
             val donationBox = ctx.getBoxesById(ticket.hcursor.downField("boxId").as[String].getOrElse(throw parseException())).head
@@ -438,7 +438,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
 
   def processActiveRaffles(ctx: BlockchainContext): Unit = {
     try {
-      client.getAllUnspentBox(Address.create(Configs.addressEncoder.fromProposition(addresses.getRaffleActiveContract().getErgoTree).get.toString))
+      client.getAllUnspentBox(addresses.raffleActiveAddress)
         .filter(box => {
           box.getRegisters.get(0).getValue.asInstanceOf[Coll[Long]].toArray(4) < client.getHeight
         }).foreach(raffle => {
@@ -452,7 +452,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
 
   def processRefundRaffles(ctx: BlockchainContext): Unit = {
     try {
-      client.getAllUnspentBox(Address.create(Configs.addressEncoder.fromProposition(addresses.getRaffleRedeemContract().getErgoTree).get.toString))
+      client.getAllUnspentBox(addresses.raffleRedeemAddress)
         .foreach(raffle => processRefundRaffle(ctx, raffle))
     }
     catch {
@@ -464,7 +464,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
   def processWinnerRaffle(ctx: BlockchainContext): Unit = {
     try {
       var serviceBox = utils.getServiceBox()
-      client.getAllUnspentBox(Address.create(Configs.addressEncoder.fromProposition(addresses.getRaffleWinnerContract().getErgoTree).get.toString))
+      client.getAllUnspentBox(addresses.raffleWinnerAddress)
         .foreach(winner => {
           if (!utils.isBoxInMemPool(winner)) {
             val tx = withdrawReward(ctx, serviceBox, winner)
