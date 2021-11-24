@@ -103,11 +103,9 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
           )
           .registers(
             ErgoValue.of(Address.create(req.participantAddress).getErgoAddress.script.bytes),
-            utils.longListToErgoValue(Array(ticketSold, ticketSold + req.ticketCount, deadlineHeight, ticketPrice)),
-            ErgoValue.of(serviceAddress.script.bytes)
+            utils.longListToErgoValue(Array(ticketSold, ticketSold + req.ticketCount, deadlineHeight, ticketPrice))
           ).build()
 
-        // TODO : Write service address in R6
         var change = paymentBoxCover._3 - req.fee
         var fee = Configs.fee
         if (change <= Configs.minBoxErg) fee += change

@@ -95,7 +95,6 @@ class RaffleContract @Inject()() {
        |  val raffleSpend = {
        |    if (INPUTS.size == 3) {
        |      // winner reward. must pay back service token to servicebox we have 3 input boxes in this condition
-       |      // Winner
        |      allOf(
        |        Coll(
        |          OUTPUTS(1).value == INPUTS(1).value,
@@ -189,7 +188,6 @@ class RaffleContract @Inject()() {
        |          // Winner Address or redeem
        |          // TODO check R4 to be valid address
        |          OUTPUTS(1).R4[Coll[Byte]].isDefined,
-       |          OUTPUTS(1).R6[Coll[Byte]].get == serviceAddress,
        |          // check ticket parameters [rangeStart, rangeEnd, deadlineHeight, ticketPrice]
        |          OUTPUTS(1).R5[Coll[Long]].get(0) == totalSoldTicket,
        |          OUTPUTS(1).R5[Coll[Long]].get(1) == outTotalSoldTicket,
