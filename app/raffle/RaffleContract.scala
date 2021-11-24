@@ -90,15 +90,12 @@ class RaffleContract @Inject()() {
        |  }
        |}""".stripMargin
 
-  // TODO Add service address in registers
   lazy val ticketScript: String =
     s"""{
-       |  //winner reward. must pay back service token to servicebox we have 3 input boxes in this condition
-       |  if (HEIGHT > SELF.R5[Coll[Long]].get(2) + ExpireHeight){
-       |    sigmaProp(ownerPk) //(decodePoint(SELF.R6[Coll[Byte]].get))
-       |  } else if (INPUTS.size == 3) {
-       |    // Winner
-       |    sigmaProp(
+       |  val raffleSpend = {
+       |    if (INPUTS.size == 3) {
+       |      // winner reward. must pay back service token to servicebox we have 3 input boxes in this condition
+       |      // Winner
        |      allOf(
        |        Coll(
        |          OUTPUTS(1).value == INPUTS(1).value,
@@ -107,21 +104,22 @@ class RaffleContract @Inject()() {
        |          INPUTS(1).tokens(1)._1 == SELF.tokens(0)._1
        |        )
        |      )
-       |    )
-       |  } else {
-       |    // Refund
-       |    sigmaProp(
-       |      allOf(
-       |        Coll(
-       |          INPUTS(0).tokens(1)._1 == SELF.tokens(0)._1,
-       |          INPUTS(0).tokens(0)._1 == raffleServiceToken,
-       |          INPUTS.size == 2,
-       |          OUTPUTS(1).propositionBytes == SELF.R4[Coll[Byte]].get,
-       |          OUTPUTS(1).value == SELF.R5[Coll[Long]].get(3) * SELF.tokens(0)._2
+       |    } else {
+       |      if(INPUTS(0).tokens.size > 1) {
+       |        // Refund
+       |        allOf(
+       |          Coll(
+       |            INPUTS(0).tokens(1)._1 == SELF.tokens(0)._1,
+       |            INPUTS(0).tokens(0)._1 == raffleServiceToken,
+       |            INPUTS.size == 2,
+       |            OUTPUTS(1).propositionBytes == SELF.R4[Coll[Byte]].get,
+       |            OUTPUTS(1).value == SELF.R5[Coll[Long]].get(3) * SELF.tokens(0)._2
+       |          )
        |        )
-       |      )
-       |    )
+       |      } else {false}
+       |    }
        |  }
+       |  sigmaProp(raffleSpend) || (ownerPk && sigmaProp(HEIGHT > SELF.R5[Coll[Long]].get(2) + ExpireHeight))
        |}""".stripMargin
 
   lazy val RaffleScriptWaitingToken: String =
@@ -323,17 +321,17 @@ class RaffleContract @Inject()() {
     s"""{
        |  if(OUTPUTS.size > 2) {
        |    val createRaffleConditions = {
-       |      allOf(Coll( true
-//       |        OUTPUTS(0).tokens(0)._1 == raffleServiceNFT,
-//       |        OUTPUTS(1).tokens(0)._1 == raffleServiceToken,
-//       |        OUTPUTS(1).R4[Coll[Long]].get(0) == charityCoef,
-//       |        OUTPUTS(1).R4[Coll[Long]].get(2) == ticketPrice,
-//       |        OUTPUTS(1).R4[Coll[Long]].get(3) == goal,
-//       |        OUTPUTS(1).R4[Coll[Long]].get(4) == deadlineHeight,
-//       |        OUTPUTS(1).R5[Coll[Byte]].get == charityAddress,
-//       |        OUTPUTS(1).R6[Coll[Coll[Byte]]].get(0) == name,
-//       |        OUTPUTS(1).R6[Coll[Coll[Byte]]].get(1) == description,
-//       |        %s
+       |      allOf(Coll(
+       |        OUTPUTS(0).tokens(0)._1 == raffleServiceNFT,
+       |        OUTPUTS(1).tokens(0)._1 == raffleServiceToken,
+       |        OUTPUTS(1).R4[Coll[Long]].get(0) == charityCoef,
+       |        OUTPUTS(1).R4[Coll[Long]].get(2) == ticketPrice,
+       |        OUTPUTS(1).R4[Coll[Long]].get(3) == goal,
+       |        OUTPUTS(1).R4[Coll[Long]].get(4) == deadlineHeight,
+       |        OUTPUTS(1).R5[Coll[Byte]].get == charityAddress,
+       |        OUTPUTS(1).R6[Coll[Coll[Byte]]].get(0) == name,
+       |        OUTPUTS(1).R6[Coll[Coll[Byte]]].get(1) == description,
+       |        %s
        |      ))
        |    }
        |    sigmaProp(createRaffleConditions)
@@ -361,7 +359,7 @@ class RaffleContract @Inject()() {
        |    val returnDonates = {
        |      allOf(Coll(
        |        OUTPUTS(0).propositionBytes == userAddress, // user must receive the appropriate amount, only refund transactions's fee must be deducted from user's funds
-       |        (HEIGHT > refundHeightThreshold || HEIGHT > raffleDeadline), // The donate request confirmation block has passed the refundHeightThreshold or raffleDeadline passed
+       |        (HEIGHT > refundHeightThreshold || HEIGHT >= raffleDeadline), // The donate request confirmation block has passed the refundHeightThreshold or raffleDeadline passed
        |        OUTPUTS.size == 2, // only refund box and transaction fee box is needed
        |        OUTPUTS(1).value <= maxFee,
        |      ))
