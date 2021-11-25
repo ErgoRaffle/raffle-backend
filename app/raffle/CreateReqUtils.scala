@@ -24,7 +24,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
   def CreateRaffleProxyAddress(pk: String, charityPercent: Int, name: String, description: String, deadlineHeight: Long,
                                charityAddr: String, goal: Long, ticketPrice: Long, picLinks: List[String]): (String, Long) = {
     try {
-      val paymentAddress = addresses.getRaffleCreateProxyContract(pk, charityPercent, name, description, deadlineHeight, charityAddr, goal, ticketPrice)
+      val paymentAddress = addresses.getRaffleCreateProxyContract(pk, charityPercent, name, description, deadlineHeight, charityAddr, goal, ticketPrice, picLinks)
       val picLinksJson: String = picLinks.asJson.toString
       val req: CreateReq = createReqDAO.insert(name, description, goal, deadlineHeight, charityPercent, charityAddr, ticketPrice, 0, pk, paymentAddress,
         null, null, picLinksJson, LocalDateTime.now().toString, Configs.creationDelay + client.getHeight)
@@ -63,7 +63,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
       val r5 = ErgoValue.of(new ErgoTreeContract(Address.create(req.charityAddr).getErgoAddress.script).getErgoTree.bytes)
       var r6SeqByte: Seq[Array[Byte]] = Seq(req.name.getBytes("utf-8"), req.description.getBytes("utf-8"))
       parser.parse(req.picLinks).getOrElse(null).as[List[String]].getOrElse(List())
-        .foreach(link => r6SeqByte = r6SeqByte :+ (link.getBytes("utf8")) )
+        .foreach(link => r6SeqByte = r6SeqByte :+ link.getBytes("utf8") )
       val r6 = ErgoValue.of(r6SeqByte.map(item => {
         ErgoValue.of(IndexedSeq(item: _*).toArray)
       }).map(item => item.getValue).toArray, ErgoType.collType(ErgoType.byteType()))
@@ -71,14 +71,14 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
       val r8 = ErgoValue.of(serviceBox.getId.getBytes.clone())
       val outputRaffleBox = txB.outBoxBuilder()
         .value(Configs.fee * 2)
-        .contract(addresses.getRaffleWaitingTokenContract())
+        .contract(addresses.raffleInactiveContract)
         .tokens(new ErgoToken(Configs.token.service, 1))
         .registers(r4, r5, r6, r7, r8).build()
 
       val tokenName = ErgoValue.of(s"Raffle_token: ${req.name}".getBytes("utf-8"))
       val outputTokenIssueBox = txB.outBoxBuilder()
         .value(Configs.fee)
-        .contract(addresses.getRaffleTokenIssueContract())
+        .contract(addresses.tokenRepoContract)
         .tokens(new ErgoToken(serviceBox.getId.getBytes, 1000000000L))
         .registers(tokenName, tokenName, ErgoValue.of("0".getBytes("utf-8")))
         .build()
@@ -114,7 +114,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         .build()
       val raffleOutputBox = txB.outBoxBuilder()
         .value(Configs.fee * 2)
-        .contract(addresses.getRaffleActiveContract())
+        .contract(addresses.raffleActiveContract)
         .registers(
           raffleBox.getRegisters.get(0),
           raffleBox.getRegisters.get(1),
@@ -200,8 +200,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
 
   def independentMergeTxGeneration(): Unit = try{
     client.getClient.execute(ctx => {
-      val raffleWaitingTokenAdd = Address.fromErgoTree(addresses.getRaffleWaitingTokenContract().getErgoTree, Configs.networkType)
-      val raffleWaitingTokenBoxes = client.getAllUnspentBox(raffleWaitingTokenAdd)
+      val raffleWaitingTokenBoxes = client.getAllUnspentBox(addresses.raffleInactiveAddress)
         .filter(_.getTokens.size() > 0)
         .filter(_.getTokens.get(0).getId.toString == Configs.token.service)
       raffleWaitingTokenBoxes.foreach(box => {

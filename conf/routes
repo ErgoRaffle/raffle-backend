@@ -15,6 +15,7 @@ GET     /api/wallet/:address/donation                controllers.HomeController.
 GET     /api/wallet/:address/win                     controllers.HomeController.walletWins(address: String, offset: Int ?= 0, limit: Int ?= 100)
 POST    /api/refund                                  controllers.HomeController.refundPayments()
 POST    /api/support                                 controllers.HomeController.support()
+POST    /api/contact                                 controllers.HomeController.contact()
 GET     /*file                                       controllers.HomeController.assetOrDefault(file)
 
 # Map static resources from the /public folder to the /assets URL path

@@ -19,6 +19,7 @@ object Configs extends ConfigHelper {
   lazy val serviceOwner: Address = Address.create(readKey("service.owner"))
   lazy val serviceFeeAddress: Address = Address.create(readKey("service.feeAddress"))
 
+  lazy val expireHeight: Long = readKey("expireHeight").toLong
   lazy val creationDelay: Int = readKey("creationDelay").toInt
   lazy val infBoxVal: Long = readKey("infBoxVal").toLong
 
@@ -31,6 +32,8 @@ object Configs extends ConfigHelper {
   lazy val recaptchaPubKey: String = readKey("recaptchaPubKey", default = "not-set")
 
   lazy val activeFinalize: Boolean = readKey("activeFinalize").toBoolean
+
+  lazy val contactWebHook: String = readKey("contactWebHook")
 
   object token {
     lazy val nft: String = readKey("raffle.token.nft")

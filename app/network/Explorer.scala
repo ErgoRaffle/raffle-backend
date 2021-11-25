@@ -1,16 +1,13 @@
 package network
 
-import helpers.{Configs, connectionException, explorerException, parseException}
+import helpers.{Configs, connectionException, requestException, parseException}
 import io.circe.Json
-import io.circe.parser.parse
 
 import javax.inject.Singleton
 import org.ergoplatform.appkit.{Address, ErgoTreeTemplate}
 import play.api.Logger
-import scalaj.http.{BaseHttp, HttpConstants}
-import sigmastate.Values.ErgoTree
 
-import scala.util.{Failure, Success, Try}
+import sigmastate.Values.ErgoTree
 
 @Singleton
 class Explorer() {
@@ -32,7 +29,7 @@ class Explorer() {
   def getTxsInMempoolByAddress(address: String): Json = try {
     Request.httpGet(s"$mempoolTransactions/$address")
   } catch {
-    case e: explorerException =>
+    case e: requestException =>
       logger.warn(e.getMessage)
       throw connectionException()
     case e: Throwable =>
@@ -47,7 +44,7 @@ class Explorer() {
   def getUnconfirmedTx(txId: String): Json = try {
     Request.httpGet(s"$unconfirmedTx/$txId")
   } catch {
-    case _: explorerException =>
+    case _: requestException =>
       Json.Null
     case e: Throwable =>
       logger.error(e.getMessage)
@@ -61,7 +58,7 @@ class Explorer() {
   def getConfirmedTx(txId: String): Json = try {
     Request.httpGet(s"$tx/$txId")
   } catch {
-    case _: explorerException =>
+    case _: requestException =>
       Json.Null
     case e: Throwable =>
       logger.error(e.getMessage)
@@ -95,7 +92,7 @@ class Explorer() {
   def getUnspentTokenBoxes(tokenId: String, offset: Int, limit: Int): Json = try {
     Request.httpGet(s"$unspentBoxesByTokenId/$tokenId?offset=$offset&limit=$limit")
   } catch {
-    case e: explorerException =>
+    case e: requestException =>
       logger.warn(e.getMessage)
       throw connectionException()
     case e: Throwable =>
@@ -106,7 +103,7 @@ class Explorer() {
   def getAllTokenBoxes(tokenId: String, offset: Int, limit: Int): Json = try {
     Request.httpGet(s"$allBoxesByTokenId/$tokenId?offset=$offset&limit=$limit")
   } catch {
-    case e: explorerException =>
+    case e: requestException =>
       logger.warn(e.getMessage)
       throw connectionException()
     case e: Throwable =>
@@ -117,7 +114,7 @@ class Explorer() {
   def getUnspentBoxByID(boxId: String): Json = try {
     Request.httpGet(s"$boxesP1/$boxId")
   } catch {
-    case e: explorerException =>
+    case e: requestException =>
       logger.warn(e.getMessage)
       throw connectionException()
     case e: Throwable =>
@@ -128,7 +125,7 @@ class Explorer() {
   def getUnconfirmedTxByAddress(address: String): Json = try {
     Request.httpGet(s"$unconfirmedTx/byAddress/$address/?offset=0&limit=100")
   } catch {
-    case e: explorerException =>
+    case e: requestException =>
       logger.warn(e.getMessage)
       throw connectionException()
     case e: Throwable =>
@@ -144,7 +141,7 @@ class Explorer() {
     ))
     Request.httpPost(boxSearch, json.toString())
   } catch {
-    case e: explorerException =>
+    case e: requestException =>
       logger.warn(e.getMessage)
       throw connectionException()
     case e: Throwable =>
@@ -161,54 +158,11 @@ class Explorer() {
     ))
     Request.httpPost(boxSearch, json.toString())
   } catch {
-    case e: explorerException =>
+    case e: requestException =>
       logger.warn(e.getMessage)
       throw connectionException()
     case e: Throwable =>
       logger.error(e.getMessage)
       throw connectionException()
-  }
-}
-
-object Request{
-  object RaffleHttp extends BaseHttp (None, HttpConstants.defaultOptions, HttpConstants.utf8, 4096, "Mozilla/5.0 (X11; OpenBSD amd64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.81 Safari/537.36", true)
-  private val defaultHeader: Seq[(String, String)] = Seq[(String, String)](("Accept", "application/json"))
-  private val defaultPostHeader: Seq[(String, String)] = Seq[(String, String)](("Accept", "application/json"), ("Content-Type", "application/json"))
-  def httpGetWithError(url: String, headers: Seq[(String, String)] = defaultHeader): Either[Throwable, Json] = {
-    Try {
-      val responseReq = RaffleHttp(url).headers(defaultHeader).asString
-      (responseReq.code, responseReq)
-    }
-    match{
-      case Success((200, responseReq)) => parse(responseReq.body)
-      case Success((responseHttpCode, responseReq)) => Left(explorerException(s"returned a error with http code $responseHttpCode and error ${responseReq.throwError}"))
-      case Failure(exception) => Left(exception)
-    }
-  }
-
-  def httpGet(url: String): Json = {
-    httpGetWithError(url) match {
-      case Right(json) => json
-      case Left(ex) => throw ex
-    }
-  }
-
-  def httpPostWithError(url: String, data: String): Either[Throwable, Json] = {
-    Try {
-      val responseReq = RaffleHttp(url).postData(data).headers(defaultPostHeader).asString
-      (responseReq.code, responseReq)
-    }
-    match{
-      case Success((200, responseReq)) => parse(responseReq.body)
-      case Success((responseHttpCode, responseReq)) => Left(new Exception(s"returned a error with http code $responseHttpCode and error ${responseReq.throwError}"))
-      case Failure(exception) => Left(exception)
-    }
-  }
-
-  def httpPost(url: String, data: String): Json = {
-    httpPostWithError(url, data) match {
-      case Right(json) => json
-      case Left(ex) => throw ex
-    }
   }
 }

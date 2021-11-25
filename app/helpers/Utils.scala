@@ -3,25 +3,28 @@ package helpers
 import java.io.{PrintWriter, StringWriter}
 import javax.inject.{Inject, Singleton}
 import io.circe.{Json => ciJson}
+import java.util.Calendar
+import io.kinoplan.emailaddress.EmailAddress
+import play.api.Logger
+import play.api.libs.json._
+import scala.collection.JavaConverters._
+import scala.collection.mutable.Seq
+import scala.util.Try
+
 import network.{Client, Explorer}
 import org.ergoplatform.appkit.{Address, BlockchainContext, ErgoClientException, ErgoType, ErgoValue, InputBox, JavaHelpers, SignedTransaction}
 import special.collection.Coll
-
-import java.util.Calendar
 import org.ergoplatform.ErgoAddress
 import sigmastate.serialization.ErgoTreeSerializer
 import network.Request
 import play.api.Logger
 import play.api.libs.json._
 
-import scala.collection.JavaConverters._
-import scala.collection.mutable.Seq
-import scala.util.Try
 
 final case class InvalidRecaptchaException(private val message: String = "Invalid recaptcha") extends Throwable(message)
 final case class paymentNotCoveredException(private val message: String = "Payment not Covered") extends Throwable(message)
 final case class failedTxException(private val message: String = "Tx sending failed") extends Throwable(message)
-final case class explorerException(private val message: String = "Explorer error") extends Throwable(message)
+final case class requestException(private val message: String = "Explorer error") extends Throwable(message)
 final case class connectionException(private val message: String = "Network Error") extends Throwable(message)
 final case class parseException(private val message: String = "Parsing failed") extends Throwable(message)
 final case class finishedRaffleException(private val message: String = "raffle finished") extends Throwable(message)
@@ -290,5 +293,35 @@ class Utils @Inject()(client: Client, explorer: Explorer) {
   def currentTime: Long = Calendar.getInstance().getTimeInMillis / 1000
 
   def getTransactionFrontLink(txId: String): String = Configs.explorerFront + "/en/transactions/" + txId
+
+  def sendDetailForContactToWebHook(email: EmailAddress, message: String): Unit = {
+    val content =
+      s"""
+         |{
+         |  "username": "Contact Webhook",
+         |  "embeds": [
+         |    {
+         |      "author": {
+         |        "name": "${email.mailbox}"
+         |      },
+         |      "title": "${message.take(15).toUpperCase} ...",
+         |      "color": ${BigInt(24, new scala.util.Random())},
+         |      "fields": [
+         |        {
+         |          "name": "Email",
+         |          "value": "$email",
+         |          "inline": true
+         |        },
+         |        {
+         |          "name": "Message",
+         |          "value": "$message"
+         |        }
+         |      ]
+         |    }
+         |  ]
+         |}
+         |""".stripMargin
+    Request.httpPost(Configs.contactWebHook, content)
+  }
 
 }
