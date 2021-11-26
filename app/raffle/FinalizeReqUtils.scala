@@ -396,12 +396,8 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
       processRefundRaffle(ctx, failTx.getOutputsToSpend.get(0))
     } catch {
       case _: connectionException =>
-      case e: failedTxException => {
-        logger.error(e.getMessage)
-      }
-      case e: Throwable => {
-        logger.warn(e.getMessage)
-      }
+      case e: failedTxException => logger.error(e.getMessage)
+      case e: Throwable => logger.warn(e.getMessage)
     }
   }
 
@@ -432,6 +428,7 @@ class FinalizeReqUtils @Inject()(client: Client, explorer: Explorer,
         if (!utils.isBoxInMemPool(raffle)) processSingleRaffle(ctx, raffle)
       })
     } catch {
+      case e: ErgoClientException => logger.warn(e.getMessage)
       case e: connectionException => logger.warn(e.getMessage)
       case e: Throwable => logger.error(utils.getStackTraceStr(e))
     }

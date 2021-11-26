@@ -27,6 +27,7 @@ class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO, uti
             serviceBox = handleReq(req, serviceBox)
           }
         } catch {
+          case _: connectionException =>
           case e: Throwable => logger.error(utils.getStackTraceStr(e))
         }
       })
@@ -71,10 +72,9 @@ class CreateReqHandler@Inject ()(client: Client, createReqDAO: CreateReqDAO, uti
     catch {
       case _: connectionException => serviceBox
       case _: failedTxException => serviceBox
-      case e: Throwable => {
+      case _: Throwable =>
         logger.error(s"Creation request ${req.id} failed")
         serviceBox
-      }
     }
   }
 }
@@ -95,6 +95,7 @@ class DonateReqHandler@Inject ()(client: Client, donateReqDAO: DonateReqDAO, uti
             raffleMap = handleReq(req, raffleMap)
           }
         } catch {
+          case _: connectionException =>
           case e: Throwable => logger.error(utils.getStackTraceStr(e))
         }
       })

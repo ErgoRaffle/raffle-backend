@@ -164,7 +164,7 @@ class RaffleUtils @Inject()(client: Client, explorer: Explorer, addresses: Addre
       throw internalException()
   }
 
-  def getWinnerBox(tokenId: String): Json = try {
+  def getWinnerBox(tokenId: String): Json = {
     var boxes: Json = null
     var winnerBox: Json = null
     var offset = 0
