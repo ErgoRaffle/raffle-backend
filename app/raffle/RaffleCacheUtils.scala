@@ -52,7 +52,6 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
   }
 
   def raffleSearch(): Unit = {
-    logger.debug("Searching for new raffles started")
     try {
       var offset: Int = 0
       var items = raffleUtils.getAllRaffleBoxes(offset)
@@ -114,7 +113,6 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
       case e: parseException => logger.error(e.getMessage)
       case e: Throwable => logger.error(utils.getStackTraceStr(e))
     }
-    logger.info("Updating raffles finished")
   }
 
   def activeRaffleTxUpdate(tokenId: String): Unit = try {
@@ -247,6 +245,5 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
       case e: parseException => logger.error(e.getMessage)
       case e: Throwable => logger.error(utils.getStackTraceStr(e))
     }
-    logger.info("Updating raffle cache finished")
   }
 }

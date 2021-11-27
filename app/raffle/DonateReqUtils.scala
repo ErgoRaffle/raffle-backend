@@ -25,25 +25,22 @@ class DonateReqUtils @Inject()(client: Client, utils: Utils, donateReqDAO: Donat
         val raffle = raffleCacheDAO.byTokenId(raffleId)
         val expectedDonate = (raffle.ticketPrice * ticketCounts) + (Configs.fee * 2)
         if (raffle.deadlineHeight < ctx.getHeight) {
-          throw finishedRaffleException(s"raffle ${raffleId} has finished can not create proxy address")
+          throw finishedRaffleException(s"raffle $raffleId passed its deadline, unable to donate to the raffle")
         }
 
-        val donateContract = addresses.getRaffleDonateProxyContract(pk, raffleId, ticketCounts, raffle.deadlineHeight)
-        val feeEmissionAddress: ErgoAddress = Configs.addressEncoder.fromProposition(donateContract.getErgoTree).get
-        val req: DonateReq = donateReqDAO.insert(ticketCounts, expectedDonate, raffle.deadlineHeight, 0, feeEmissionAddress.toString, raffleId,
+        val paymentAddress = addresses.getRaffleDonateProxyContract(pk, raffleId, ticketCounts, raffle.deadlineHeight)
+        val req: DonateReq = donateReqDAO.insert(ticketCounts, expectedDonate, raffle.deadlineHeight, 0, paymentAddress, raffleId,
           null, pk, LocalDateTime.now().toString, client.getHeight + Configs.creationDelay)
-        logger.debug("Donate payment address created")
-
-        (feeEmissionAddress.toString, expectedDonate, req.id)
+        logger.info(s"New Donation request ${req.id} to the raffle $raffleId with payment address $paymentAddress")
+        (paymentAddress, expectedDonate, req.id)
       })
     }
     catch {
       case e: finishedRaffleException => throw e
       case e: connectionException => throw e
-      case e: Throwable => {
+      case e: Throwable =>
         logger.error(utils.getStackTraceStr(e))
         throw new Throwable("Error in payment address generation")
-      }
     }
   }
 
@@ -102,18 +99,18 @@ class DonateReqUtils @Inject()(client: Client, utils: Utils, donateReqDAO: Donat
         var signedTx: SignedTransaction = null
         try {
           signedTx = prover.sign(tx)
-          logger.debug(s"create tx for request ${req.id} proved successfully")
+          logger.debug(s"donation tx for request ${req.id} proved successfully")
         } catch {
           case e: Throwable =>
             logger.error(utils.getStackTraceStr(e))
-            logger.error(s"create tx for request ${req.id} proving failed")
+            logger.error(s"donation tx for request ${req.id} proving failed")
             throw proveException()
         }
 
         var txId = ctx.sendTransaction(signedTx)
-        if (txId == null) throw failedTxException(s"Donataion transaction sending failed for ${req.id}")
+        if (txId == null) throw failedTxException(s"Donation transaction sending failed for request ${req.id}")
         else txId = txId.replaceAll("\"", "")
-        logger.info("Donate Transaction Sent with TxId: " + txId)
+        logger.info(s"Donate Transaction Sent for request ${req.id} with TxId: " + txId)
         donateReqDAO.updateDonateTxId(req.id, txId)
         donateReqDAO.updateStateById(req.id, 1)
         signedTx.getOutputsToSpend.get(0)

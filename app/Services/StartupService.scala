@@ -3,16 +3,17 @@ package Services
 import akka.actor.{ActorRef, ActorSystem, Props}
 import network.Client
 import play.api.Logger
+
 import javax.inject.{Inject, Singleton}
 import helpers.Configs
-import raffle.RaffleCacheUtils
+import raffle.{FinalizeUtils, RaffleCacheUtils}
 
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 @Singleton
 class StartupService @Inject()(node: Client, system: ActorSystem, createReqHandler: CreateReqHandler,
-                               donateReqHandler: DonateReqHandler, refundReqHandler: RefundReqHandler,
+                               donateReqHandler: DonateReqHandler, finalizeUtils: FinalizeUtils,
                                raffleCacheUtils: RaffleCacheUtils)
                               (implicit ec: ExecutionContext) {
 
@@ -22,7 +23,7 @@ class StartupService @Inject()(node: Client, system: ActorSystem, createReqHandl
   node.setClient()
 
   val jobs: ActorRef = system.actorOf(Props(new Jobs(createReqHandler, donateReqHandler,
-    refundReqHandler, raffleCacheUtils)), "scheduler")
+    finalizeUtils, raffleCacheUtils)), "scheduler")
 
   system.scheduler.scheduleAtFixedRate(
     initialDelay = 2.seconds,
@@ -56,7 +57,7 @@ class StartupService @Inject()(node: Client, system: ActorSystem, createReqHandl
       initialDelay = 2.seconds,
       interval = Configs.refundThreadInterval.seconds,
       receiver = jobs,
-      message = JobsUtil.refund
+      message = JobsUtil.finished
     )
   }
 }

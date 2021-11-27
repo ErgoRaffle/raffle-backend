@@ -145,18 +145,19 @@ class Addresses @Inject()(client: Client, contract: RaffleContract){
     })
   }
 
-  def getRaffleDonateProxyContract(pk: String, raffleId: String, ticketCounts: Long, raffleDeadline: Long): ErgoContract = {
+  def getRaffleDonateProxyContract(pk: String, raffleId: String, ticketCounts: Long, raffleDeadline: Long): String = {
     client.getClient.execute((ctx: BlockchainContext) => {
-      ctx.compileContract(
+      val proxyContract = ctx.compileContract(
         ConstantsBuilder.create()
           .item("tokenId", ErgoId.create(raffleId).getBytes)
           .item("userAddress", Address.create(pk).getErgoAddress.script.bytes)
           .item("ticketCount", ticketCounts)
-          .item("minFee", Configs.fee)
+          .item("maxFee", Configs.fee)
           .item("raffleDeadline", raffleDeadline)
           .item("refundHeightThreshold", ctx.getHeight + Configs.expireHeight)
           .build(),
         contract.donateScript)
+      Configs.addressEncoder.fromProposition(proxyContract.getErgoTree).get.toString
     })
   }
 }

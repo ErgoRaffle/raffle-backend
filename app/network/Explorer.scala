@@ -44,11 +44,8 @@ class Explorer() {
   def getUnconfirmedTx(txId: String): Json = try {
     Request.httpGet(s"$unconfirmedTx/$txId")
   } catch {
-    case _: requestException =>
+    case _: Throwable =>
       Json.Null
-    case e: Throwable =>
-      logger.error(e.getMessage)
-      throw connectionException()
   }
 
   /**
@@ -58,11 +55,8 @@ class Explorer() {
   def getConfirmedTx(txId: String): Json = try {
     Request.httpGet(s"$tx/$txId")
   } catch {
-    case _: requestException =>
+    case _: Throwable =>
       Json.Null
-    case e: Throwable =>
-      logger.error(e.getMessage)
-      throw connectionException()
   }
 
   // TODO: use this function instead of utils.checkTransaction

@@ -28,6 +28,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
       val picLinksJson: String = picLinks.asJson.toString
       val req: CreateReq = createReqDAO.insert(name, description, goal, deadlineHeight, charityPercent, charityAddr, ticketPrice, 0, pk, paymentAddress,
         null, null, picLinksJson, LocalDateTime.now().toString, Configs.creationDelay + client.getHeight)
+      logger.info(s"New Creation request ${req.id} with payment address $paymentAddress")
       (paymentAddress, req.id)
     }
     catch {
@@ -98,11 +99,10 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         val signedTx = prover.sign(raffleCreateTx)
         signedTx
       } catch {
-        case e: Throwable => {
+        case e: Throwable =>
           logger.error(utils.getStackTraceStr(e))
           logger.error(s"create tx for request ${req.id} proving failed")
           throw proveException()
-        }
       }
     })
   }
@@ -168,7 +168,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         var createTxId = ctx.sendTransaction(createTx)
         if (createTxId == null) throw failedTxException(s"Creation transaction sending failed for ${req.id}")
         else createTxId = createTxId.replaceAll("\"", "")
-        logger.info(s"Creation transaction ${createTxId} sent for ${req.id}")
+        logger.info(s"Creation transaction sent for request ${req.id} with TxId: $createTxId")
         createReqDAO.updateCreateTxID(req.id, createTxId)
         createReqDAO.updateStateById(req.id, 1)
 
@@ -176,7 +176,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         var mergeTxId = ctx.sendTransaction(mergeTx)
         if (mergeTxId == null) throw failedTxException(s"Merge transaction sending failed for ${req.id}")
         else mergeTxId = mergeTxId.replaceAll("\"", "")
-        logger.info(s"Merge transaction ${mergeTxId} sent for ${req.id}")
+        logger.info(s"Merge transaction sent for request ${req.id} with TxId: $mergeTxId")
         createReqDAO.updateMergeTxId(req.id, mergeTxId)
         createTx.getOutputsToSpend.get(0)
       })
@@ -213,9 +213,9 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
           if(!utils.isBoxInMemPool(tokenBox)){
             val mergeTx = mergeRaffle(box, tokenBox)
             var mergeTxId = ctx.sendTransaction(mergeTx)
-            if (mergeTxId == null) throw failedTxException(s"Merge transaction sending failed for raffle ${tokenId}")
+            if (mergeTxId == null) throw failedTxException(s"Merge transaction sending failed for raffle $tokenId")
             else mergeTxId = mergeTxId.replaceAll("\"", "")
-            logger.info(s"Merge Tx for raffle ${tokenId} sent with txId: " + mergeTxId)
+            logger.info(s"Merge Tx for raffle $tokenId sent with txId: " + mergeTxId)
           }
         } catch {
           case e: parseException => logger.warn(e.getMessage)
