@@ -44,7 +44,9 @@ class Client @Inject()() {
     try {
       client.execute(ctx => ctx.getHeight)
     } catch {
-      case _: Throwable => throw connectionException()
+      case e: Throwable =>
+        logger.error(e.getMessage)
+        throw connectionException()
     }
   }
 
@@ -57,7 +59,9 @@ class Client @Inject()() {
       try {
         ctx.getUnspentBoxesFor(address, 0, 100).asScala.toList
       } catch {
-        case _: Throwable => throw connectionException()
+        case e: Throwable =>
+          logger.error(e.getMessage)
+          throw connectionException()
       }
     )
   }
@@ -67,7 +71,9 @@ class Client @Inject()() {
       try {
         ctx.getCoveringBoxesFor(address, (1e9 * 1e8).toLong).getBoxes.asScala.toList
       } catch {
-        case _: Throwable => throw connectionException()
+        case e: Throwable =>
+          logger.error(e.getMessage)
+          throw connectionException()
       }
     )
   }
@@ -77,7 +83,9 @@ class Client @Inject()() {
       try {
         ctx.getCoveringBoxesFor(address, amount)
       } catch {
-        case _: Throwable => throw connectionException()
+        case e: Throwable =>
+          logger.error(e.getMessage)
+          throw connectionException()
       }
     )
   }

@@ -8,7 +8,9 @@ import network.{Client, Explorer}
 import play.api.Logger
 import io.circe.Json
 import models.{Raffle, RaffleCache, Ticket}
+import org.ergoplatform.appkit.ErgoClientException
 import raffle.raffleStatus._
+
 import scala.collection.mutable.Seq
 
 
@@ -23,8 +25,8 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
     else unknown.id
   }
 
-  def updateRaffle(savedRaffle: RaffleCache, raffleBox: Json): Unit ={
-    val address = raffleBox.hcursor.downField("address").as[String].getOrElse("")
+  def updateRaffle(savedRaffle: RaffleCache, raffleBox: Json): Unit = try{
+    val address = raffleBox.hcursor.downField("address").as[String].getOrElse(throw parseException())
     val state = raffleStateByAddress(address)
     val raffle = Raffle(raffleBox)
     if (state != savedRaffle.state) raffleCacheDAO.updateStateById(savedRaffle.id, state)
@@ -44,10 +46,12 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
       UnsuccessfulRaffleTxUpdate(raffle.tokenId)
       raffleCacheDAO.updateRedeemed(savedRaffle.id, savedRaffle.tickets - raffle.tickets)
     }
+  } catch{
+    case e: parseException => logger.warn(e.getMessage)
+    case e: Throwable => logger.error(utils.getStackTraceStr(e))
   }
 
   def raffleSearch(): Unit = {
-    logger.debug("Searching for new raffles started")
     try {
       var offset: Int = 0
       var items = raffleUtils.getAllRaffleBoxes(offset)
@@ -65,13 +69,12 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
             logger.debug(s"raffle with id ${raffle.tokenId} had been updated so far")
           }
           catch {
-            case e: Throwable => {
+            case _: Throwable =>
               logger.debug("New raffle found with Token Id: " + raffle.tokenId)
               val participants = raffleUtils.raffleParticipants(raffle.tokenId)
               // TODO change the timestamp
               val lastActivity: Long = box.hcursor.downField("settlementHeight").as[Long].getOrElse(throw parseException())
               raffleCacheDAO.insert(raffle, participants, state, lastActivity, lastActivity)
-            }
           }
         })
         offset += 100
@@ -104,11 +107,12 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
     }
     catch{
       case e: noRaffleException => logger.warn(e.getMessage)
-      case e: internalException =>
-      case _: parseException =>
+      case _: internalException =>
+      case _: connectionException =>
+      case e: ErgoClientException => logger.warn(e.getMessage)
+      case e: parseException => logger.error(e.getMessage)
       case e: Throwable => logger.error(utils.getStackTraceStr(e))
     }
-    logger.info("Updating raffles finished")
   }
 
   def activeRaffleTxUpdate(tokenId: String): Unit = try {
@@ -126,6 +130,7 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
     }
   } catch{
     case _: internalException =>
+    case _: connectionException =>
     case e: Throwable => logger.error(utils.getStackTraceStr(e))
   }
 
@@ -159,7 +164,8 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
     }
   } catch{
     case _: internalException =>
-    case e: parseException => logger.warn(e.getMessage)
+    case _: connectionException =>
+    case e: parseException => logger.error(e.getMessage)
     case e: Throwable => logger.error(utils.getStackTraceStr(e))
   }
 
@@ -189,6 +195,7 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
       tickets = raffleUtils.getTicketBoxes(tokenId, offset)
     }
   } catch{
+    case _: connectionException =>
     case _: internalException =>
     case e: Throwable => logger.error(utils.getStackTraceStr(e))
   }
@@ -234,10 +241,9 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
           }
       })
     } catch{
-      case e: connectionException => logger.info(e.getMessage)
-      case _: parseException =>
+      case _: connectionException =>
+      case e: parseException => logger.error(e.getMessage)
       case e: Throwable => logger.error(utils.getStackTraceStr(e))
     }
-    logger.info("Updating raffle cache finished")
   }
 }

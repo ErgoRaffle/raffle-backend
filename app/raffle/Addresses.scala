@@ -1,7 +1,8 @@
 package raffle
 
-import helpers.{Configs, Utils}
-import network.{Client, Explorer}
+import helpers.Configs
+import models.Ticket
+import network.Client
 import org.ergoplatform.appkit.{Address, BlockchainContext, ConstantsBuilder, ErgoContract, ErgoId}
 import scorex.crypto.hash.Digest32
 
@@ -140,6 +141,22 @@ class Addresses @Inject()(client: Client, contract: RaffleContract){
         constants.item(s"link$i", picLinks(i).getBytes("utf-8"))
       }
       val proxyContract = ctx.compileContract(constants.build(), updateContract)
+      Configs.addressEncoder.fromProposition(proxyContract.getErgoTree).get.toString
+    })
+  }
+
+  def getRaffleDonateProxyContract(pk: String, raffleId: String, ticketCounts: Long, raffleDeadline: Long): String = {
+    client.getClient.execute((ctx: BlockchainContext) => {
+      val proxyContract = ctx.compileContract(
+        ConstantsBuilder.create()
+          .item("tokenId", ErgoId.create(raffleId).getBytes)
+          .item("userAddress", Address.create(pk).getErgoAddress.script.bytes)
+          .item("ticketCount", ticketCounts)
+          .item("maxFee", Configs.fee)
+          .item("raffleDeadline", raffleDeadline)
+          .item("refundHeightThreshold", ctx.getHeight + Configs.expireHeight)
+          .build(),
+        contract.donateScript)
       Configs.addressEncoder.fromProposition(proxyContract.getErgoTree).get.toString
     })
   }

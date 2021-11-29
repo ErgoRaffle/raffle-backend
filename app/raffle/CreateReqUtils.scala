@@ -1,18 +1,18 @@
 package raffle
 
 import java.time.LocalDateTime
-
 import dao.CreateReqDAO
-import helpers.{Configs, Utils, connectionException, failedTxException, paymentNotCoveredException, proveException}
+import helpers.{Configs, Utils, connectionException, failedTxException, parseException, paymentNotCoveredException, proveException}
 import io.circe.{Json, parser}
 import io.circe.syntax._
 import network.{Client, Explorer}
+
 import javax.inject.Inject
 import models.CreateReq
-import org.ergoplatform.appkit.impl.{ErgoTreeContract, InputBoxImpl}
-import org.ergoplatform.appkit.{Address, BlockchainContext, ConstantsBuilder, ErgoId, ErgoToken, ErgoType, ErgoValue, InputBox, JavaHelpers, SignedTransaction}
+import org.ergoplatform.appkit.impl.ErgoTreeContract
+import org.ergoplatform.appkit.{Address, BlockchainContext, ErgoClientException, ErgoId, ErgoToken, ErgoType, ErgoValue, InputBox, SignedTransaction}
 import play.api.Logger
-import special.collection.{Coll, CollOverArray}
+import special.collection.Coll
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable.Seq
@@ -28,6 +28,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
       val picLinksJson: String = picLinks.asJson.toString
       val req: CreateReq = createReqDAO.insert(name, description, goal, deadlineHeight, charityPercent, charityAddr, ticketPrice, 0, pk, paymentAddress,
         null, null, picLinksJson, LocalDateTime.now().toString, Configs.creationDelay + client.getHeight)
+      logger.info(s"New Creation request ${req.id} with payment address $paymentAddress")
       (paymentAddress, req.id)
     }
     catch {
@@ -98,11 +99,10 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         val signedTx = prover.sign(raffleCreateTx)
         signedTx
       } catch {
-        case e: Throwable => {
+        case e: Throwable =>
           logger.error(utils.getStackTraceStr(e))
           logger.error(s"create tx for request ${req.id} proving failed")
           throw proveException()
-        }
       }
     })
   }
@@ -168,7 +168,7 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         var createTxId = ctx.sendTransaction(createTx)
         if (createTxId == null) throw failedTxException(s"Creation transaction sending failed for ${req.id}")
         else createTxId = createTxId.replaceAll("\"", "")
-        logger.info(s"Creation transaction ${createTxId} sent for ${req.id}")
+        logger.info(s"Creation transaction sent for request ${req.id} with TxId: $createTxId")
         createReqDAO.updateCreateTxID(req.id, createTxId)
         createReqDAO.updateStateById(req.id, 1)
 
@@ -176,29 +176,29 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         var mergeTxId = ctx.sendTransaction(mergeTx)
         if (mergeTxId == null) throw failedTxException(s"Merge transaction sending failed for ${req.id}")
         else mergeTxId = mergeTxId.replaceAll("\"", "")
-        logger.info(s"Merge transaction ${mergeTxId} sent for ${req.id}")
+        logger.info(s"Merge transaction sent for request ${req.id} with TxId: $mergeTxId")
         createReqDAO.updateMergeTxId(req.id, mergeTxId)
         createTx.getOutputsToSpend.get(0)
       })
     } catch {
       case e: connectionException => throw e
       case e: proveException => throw e
-      case e: failedTxException => {
+      case e: ErgoClientException =>
+        logger.warn(e.getMessage)
+        throw connectionException()
+      case e: failedTxException =>
         logger.warn(e.getMessage)
         throw e
-      }
-      case e: paymentNotCoveredException => {
+      case e: paymentNotCoveredException =>
         logger.warn(e.getMessage)
         throw e
-      }
-      case e: Throwable => {
+      case e: Throwable =>
         logger.error(utils.getStackTraceStr(e))
         throw new Throwable("Error in new raffle creation")
-      }
     }
   }
 
-  def independentMergeTxGeneration(): Unit ={
+  def independentMergeTxGeneration(): Unit = try{
     client.getClient.execute(ctx => {
       val raffleWaitingTokenBoxes = client.getAllUnspentBox(addresses.raffleInactiveAddress)
         .filter(_.getTokens.size() > 0)
@@ -207,20 +207,27 @@ class CreateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         try {
           val tokenId = new ErgoId(box.getRegisters.get(4).getValue.asInstanceOf[Coll[Byte]].toArray)
           val tokenBoxId = explorer.getUnspentTokenBoxes(tokenId.toString, 0, 100)
-            .hcursor.downField("items").as[Seq[Json]].getOrElse(throw new Throwable("parse error")).head
+            .hcursor.downField("items").as[Seq[Json]].getOrElse(throw parseException()).head
             .hcursor.downField("boxId").as[String].getOrElse(null)
           val tokenBox = ctx.getBoxesById(tokenBoxId).head
           if(!utils.isBoxInMemPool(tokenBox)){
             val mergeTx = mergeRaffle(box, tokenBox)
             var mergeTxId = ctx.sendTransaction(mergeTx)
-            if (mergeTxId == null) throw failedTxException(s"Merge transaction sending failed for raffle ${tokenId}")
+            if (mergeTxId == null) throw failedTxException(s"Merge transaction sending failed for raffle $tokenId")
             else mergeTxId = mergeTxId.replaceAll("\"", "")
-            logger.info(s"Merge Tx for raffle ${tokenId} sent with txId: " + mergeTxId)
+            logger.info(s"Merge Tx for raffle $tokenId sent with txId: " + mergeTxId)
           }
         } catch {
+          case e: parseException => logger.warn(e.getMessage)
+          case _: connectionException =>
+          case e: org.ergoplatform.appkit.ErgoClientException => logger.warn(e.getMessage)
           case e: Throwable => logger.warn(e.getMessage + s" in raffle mergeTx")
         }
       })
     })
+  } catch {
+    case _: org.ergoplatform.appkit.ErgoClientException =>
+    case _: connectionException =>
+    case e: Throwable => logger.error(utils.getStackTraceStr(e))
   }
 }

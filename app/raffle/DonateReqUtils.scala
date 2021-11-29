@@ -1,85 +1,62 @@
 package raffle
 
 import java.time.LocalDateTime
+import dao.{DonateReqDAO, RaffleCacheDAO}
+import helpers.{Configs, Utils, connectionException, failedTxException, finishedRaffleException, internalException, paymentNotCoveredException, proveException}
 
-import dao.DonateReqDAO
-import helpers.{Configs, Utils, connectionException, failedTxException, finishedRaffleException, paymentNotCoveredException, proveException}
 import javax.inject.Inject
-import models.DonateReq
-import network.{Client, Explorer}
+import models.{DonateReq, Raffle}
+import network.Client
 import org.ergoplatform.ErgoAddress
-import org.ergoplatform.appkit.{Address, BlockchainContext, ConstantsBuilder, ErgoId, ErgoToken, ErgoValue, InputBox, SignedTransaction}
-import special.collection.{Coll, CollOverArray}
+import org.ergoplatform.appkit.{Address, ErgoClientException, ErgoToken, ErgoValue, InputBox, SignedTransaction}
+import special.collection.CollOverArray
 import play.api.Logger
 
 import scala.collection.mutable.Seq
 import scala.collection.JavaConverters._
 
 
-class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils, raffleContract: RaffleContract,
-                               donateReqDAO: DonateReqDAO, addresses: Addresses){
+class DonateReqUtils @Inject()(client: Client, utils: Utils, donateReqDAO: DonateReqDAO, addresses: Addresses, raffleCacheDAO: RaffleCacheDAO){
   private val logger: Logger = Logger(this.getClass)
 
   def findProxyAddress(pk: String, raffleId: String, ticketCounts: Long): (String, Long, Long) = {
     try {
       client.getClient.execute(ctx => {
-        val raffleBox = utils.getRaffleBox(raffleId)
-
-        val r4 = raffleBox.getRegisters.get(0).getValue.asInstanceOf[CollOverArray[Long]].toArray.clone()
-        val ticketPrice = r4(2)
-        val expectedDonate = (ticketPrice * ticketCounts) + (Configs.fee * 2)
-        val raffleDeadline = r4(4)
-        if (raffleDeadline < ctx.getHeight) {
-          throw finishedRaffleException(s"raffle ${raffleId} has finished can not create proxy address")
+        val raffle = raffleCacheDAO.byTokenId(raffleId)
+        val expectedDonate = (raffle.ticketPrice * ticketCounts) + (Configs.fee * 2)
+        if (raffle.deadlineHeight < ctx.getHeight) {
+          throw finishedRaffleException(s"raffle $raffleId passed its deadline, unable to donate to the raffle")
         }
 
-        val donateContract = ctx.compileContract(
-          ConstantsBuilder.create()
-            .item("tokenId", ErgoId.create(raffleId).getBytes)
-            .item("userAddress", Address.create(pk).getErgoAddress.script.bytes)
-            .item("ticketCount", ticketCounts)
-            .item("maxFee", Configs.fee)
-            .item("expectedDonate", expectedDonate)
-            .item("raffleDeadline", raffleDeadline)
-            .item("refundHeightThreshold", ctx.getHeight + Configs.expireHeight)
-            .build(),
-          raffleContract.donateScript)
-
-        val feeEmissionAddress: ErgoAddress = Configs.addressEncoder.fromProposition(donateContract.getErgoTree).get
-
-        val req: DonateReq = donateReqDAO.insert(ticketCounts, expectedDonate, raffleDeadline, 0, feeEmissionAddress.toString, raffleId,
+        val paymentAddress = addresses.getRaffleDonateProxyContract(pk, raffleId, ticketCounts, raffle.deadlineHeight)
+        val req: DonateReq = donateReqDAO.insert(ticketCounts, expectedDonate, raffle.deadlineHeight, 0, paymentAddress, raffleId,
           null, pk, LocalDateTime.now().toString, client.getHeight + Configs.creationDelay)
-        logger.debug("Donate payment address created")
-
-        (feeEmissionAddress.toString, expectedDonate, req.id)
+        logger.info(s"New Donation request ${req.id} to the raffle $raffleId with payment address $paymentAddress")
+        (paymentAddress, expectedDonate, req.id)
       })
     }
     catch {
       case e: finishedRaffleException => throw e
       case e: connectionException => throw e
-      case e: Throwable => {
+      case e: Throwable =>
         logger.error(utils.getStackTraceStr(e))
         throw new Throwable("Error in payment address generation")
-      }
     }
   }
 
   def createDonateTx(req: DonateReq, raffleBox: InputBox): InputBox = {
     try {
       client.getClient.execute(ctx => {
-        val r4 = raffleBox.getRegisters.get(0).getValue.asInstanceOf[CollOverArray[Long]].toArray.clone()
-        val ticketPrice: Long = r4(2)
+        val raffleInfo = Raffle(raffleBox, utils)
 
         val paymentBoxCover = utils.getCoveringBoxesWithMempool(req.paymentAddress, req.fee)
         if (!paymentBoxCover._2) throw paymentNotCoveredException(s"Donation payment for request ${req.id} not covered the fee, request state is ${req.state} and request tx is ${req.donateTxID.orNull}")
         logger.debug(s"Payment covered amount for request ${req.id} is ${paymentBoxCover._3}")
 
         val txB = ctx.newTxBuilder()
-        val deadlineHeight = r4(4)
-        val ticketSold = r4(5)
-        val total_erg = req.ticketCount * ticketPrice
-        r4.update(5, ticketSold + req.ticketCount)
-        val serviceAddress = utils.getAddress(raffleBox.getRegisters.get(3).getValue.asInstanceOf[Coll[Byte]].toArray)
+        val total_erg = req.ticketCount * raffleInfo.ticketPrice
+        val r4 = raffleBox.getRegisters.get(0).getValue.asInstanceOf[CollOverArray[Long]].toArray.clone()
+        r4.update(5, raffleInfo.tickets + req.ticketCount)
 
         val outputRaffle = txB.outBoxBuilder()
           .value(raffleBox.getValue + total_erg)
@@ -103,7 +80,7 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
           )
           .registers(
             ErgoValue.of(Address.create(req.participantAddress).getErgoAddress.script.bytes),
-            utils.longListToErgoValue(Array(ticketSold, ticketSold + req.ticketCount, deadlineHeight, ticketPrice))
+            utils.longListToErgoValue(Array(raffleInfo.tickets, raffleInfo.tickets + req.ticketCount, raffleInfo.deadlineHeight, raffleInfo.ticketPrice))
           ).build()
 
         var change = paymentBoxCover._3 - req.fee
@@ -122,37 +99,37 @@ class DonateReqUtils @Inject()(client: Client, explorer: Explorer, utils: Utils,
         var signedTx: SignedTransaction = null
         try {
           signedTx = prover.sign(tx)
-          logger.debug(s"create tx for request ${req.id} proved successfully")
+          logger.debug(s"donation tx for request ${req.id} proved successfully")
         } catch {
-          case e: Throwable => {
+          case e: Throwable =>
             logger.error(utils.getStackTraceStr(e))
-            logger.error(s"create tx for request ${req.id} proving failed")
+            logger.error(s"donation tx for request ${req.id} proving failed")
             throw proveException()
-          }
         }
 
         var txId = ctx.sendTransaction(signedTx)
-        if (txId == null) throw failedTxException(s"Donataion transaction sending failed for ${req.id}")
+        if (txId == null) throw failedTxException(s"Donation transaction sending failed for request ${req.id}")
         else txId = txId.replaceAll("\"", "")
-        logger.info("Donate Transaction Sent with TxId: " + txId)
+        logger.info(s"Donate Transaction Sent for request ${req.id} with TxId: " + txId)
         donateReqDAO.updateDonateTxId(req.id, txId)
         donateReqDAO.updateStateById(req.id, 1)
         signedTx.getOutputsToSpend.get(0)
       })
     } catch {
       case e: connectionException => throw e
-      case e: proveException => throw e
-      case e:failedTxException => {
+      case _: proveException => throw internalException()
+      case e: failedTxException =>
         logger.warn(e.getMessage)
-        throw failedTxException()
-      }
-      case e:paymentNotCoveredException => {
+        throw internalException()
+      case e: ErgoClientException =>
         logger.warn(e.getMessage)
-        throw paymentNotCoveredException()
-      }
+        throw connectionException()
+      case e: paymentNotCoveredException =>
+        logger.warn(e.getMessage)
+        throw internalException()
       case e: Throwable =>
         logger.error(utils.getStackTraceStr(e))
-        throw new Throwable("Something is wrong on donating")
+        throw internalException()
     }
   }
 

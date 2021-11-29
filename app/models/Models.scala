@@ -1,13 +1,12 @@
 package models
 
 import java.nio.charset.StandardCharsets
-
-import helpers.{Configs, parseException}
+import helpers.{Configs, Utils, parseException}
 import io.circe.Json
 import io.circe.syntax._
-import org.ergoplatform.appkit.ErgoValue
+import org.ergoplatform.appkit.{ErgoValue, InputBox}
 import sigmastate.serialization.ErgoTreeSerializer
-import special.collection.Coll
+import special.collection.{Coll, CollOverArray}
 
 import scala.collection.mutable.Seq
 
@@ -84,6 +83,23 @@ object Raffle{
     new Raffle(raffleCache.name, raffleCache.description, raffleCache.goal, raffleCache.raised, raffleCache.deadlineHeight,
       raffleCache.serviceFee, raffleCache.charityPercent, raffleCache.charityAddr, winnerPercent, raffleCache.ticketPrice,
       raffleCache.tickets, raffleCache.picLinks, raffleCache.tokenId)
+  }
+
+  def apply(raffleBox: InputBox, utils: Utils): Raffle ={
+    val r4 = raffleBox.getRegisters.get(0).getValue.asInstanceOf[CollOverArray[Long]].toArray
+    val charityPercent = r4(0)
+    val serviceFee = r4(1)
+    val ticketPrice = r4(2)
+    val goal = r4(3)
+    val deadlineHeight = r4(4)
+    val totalSoldTicket = r4(5)
+    val totalRaised = raffleBox.getValue
+    val winnerPercent = 100 - charityPercent - serviceFee
+    val tokenId = raffleBox.getTokens.get(1).getId.toString
+    val charityAddress = utils.getAddress(raffleBox.getRegisters.get(1).getValue.asInstanceOf[Coll[Byte]].toArray).toString
+    // TODO : edit name and description
+    new Raffle("", "", goal, totalRaised, deadlineHeight, serviceFee.toInt, charityPercent.toInt,
+      charityAddress, winnerPercent.toInt, ticketPrice, totalSoldTicket, "", tokenId)
   }
 }
 
