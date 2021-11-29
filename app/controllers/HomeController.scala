@@ -433,9 +433,11 @@ class HomeController @Inject()(assets: Assets, donateReqUtils: DonateReqUtils, c
     val currentHeight = client.getHeight
     val serviceBox = utils.getServiceBox()
     val serviceFee = serviceBox.getRegisters.get(0).getValue.asInstanceOf[Long]
+    val supportUrl = Configs.supportUrl
 
     val result = Json.fromFields(List(
       ("pubKey", Json.fromString(key)),
+      ("supportUrl", Json.fromString(supportUrl)),
       ("required", Json.fromBoolean(required)),
       ("height", Json.fromLong(currentHeight)),
       ("serviceFee", Json.fromLong(serviceFee))
