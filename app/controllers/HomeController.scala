@@ -293,18 +293,22 @@ class HomeController @Inject()(assets: Assets, donateReqUtils: DonateReqUtils, c
   def raffleTransactions(tokenId: String, offset: Int, limit: Int): Action[AnyContent] = Action { implicit request: Request[AnyContent] =>
     try {
       val result = {
-        val raffleState = raffleCacheDAO.byTokenId(tokenId).state
-        val txs = txCacheDAO.byTokenId(tokenId, offset, limit, raffleState)
+        val txs = txCacheDAO.byTokenId(tokenId, offset, limit)
         var tmpTxs: scala.Seq[TxCache] = Seq.empty
         tmpTxs ++= txs._1
         val transactions = tmpTxs.take(limit).map(tx => {
-          Json.fromFields(List(
+          var jsonList = List(
             ("id", Json.fromString(tx.txId)),
             ("address", Json.fromString(tx.wallerAdd)),
             ("type", Json.fromString(txType.apply(tx.txType).toString)),
             ("tickets", Json.fromLong(tx.tokenCount)),
-            ("link", Json.fromString(utils.getTransactionFrontLink(tx.txId)))
-          ))
+            ("link", Json.fromString(utils.getTransactionFrontLink(tx.txId))))
+          if(tx.spendTx != Configs.noTx)
+            jsonList = jsonList ::: List(
+              ("refundTxId", Json.fromString(tx.spendTx)),
+              ("refundTxLink", Json.fromString(utils.getTransactionFrontLink(tx.spendTx)))
+            )
+          Json.fromFields(jsonList)
         })
         Json.fromFields(List(
           ("items", Json.fromValues(transactions.toList)),

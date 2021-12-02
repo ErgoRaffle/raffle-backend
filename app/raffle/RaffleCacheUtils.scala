@@ -123,7 +123,7 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
       tickets.foreach(ticketBox => {
         val ticket = Ticket(ticketBox)
         try txCacheDAO.byTxId(ticket.txId)
-        catch {case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, txType.ticket.id, ticket.walletAddress) }
+        catch {case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, txType.ticket.id, ticket.walletAddress, Configs.noTx) }
       })
       offset += 100
       tickets = raffleUtils.getTicketBoxes(tokenId, offset)
@@ -140,9 +140,9 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
       val charityTx: String = winnerRaffleBox.hcursor.downField("transactionId").as[String].getOrElse(throw parseException())
       val raffleInfo = Raffle(winnerRaffleBox)
       // Adding Charity Transaction
-      txCacheDAO.insert(charityTx, tokenId, tokenCount = 0, txType.charity.id, raffleInfo.charityAddr)
-      val spendTxId: String = winnerRaffleBox.hcursor.downField("spentTransactionId").as[String].getOrElse("")
-      if (spendTxId != "") {
+      txCacheDAO.insert(charityTx, tokenId, tokenCount = 0, txType.charity.id, raffleInfo.charityAddr, Configs.noTx)
+      val spendTxId: String = winnerRaffleBox.hcursor.downField("spentTransactionId").as[String].getOrElse(Configs.noTx)
+      if (spendTxId != Configs.noTx) {
         var offset = 0
         var tickets = raffleUtils.getTicketBoxes(tokenId, offset)
         while (tickets != null && tickets.nonEmpty) {
@@ -150,11 +150,11 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
             val ticket = Ticket(ticketBox)
             // Updating Tickets
             try txCacheDAO.byTxId(ticket.txId)
-            catch {case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, txType.ticket.id, ticket.walletAddress) }
-            val ticketSpendTxId: String = ticketBox.hcursor.downField("spentTransactionId").as[String].getOrElse("")
+            catch {case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, txType.ticket.id, ticket.walletAddress, Configs.noTx) }
+            val ticketSpendTxId: String = ticketBox.hcursor.downField("spentTransactionId").as[String].getOrElse(Configs.noTx)
             if (spendTxId == ticketSpendTxId) {
               // Adding Winner Transaction
-              txCacheDAO.insert(ticketSpendTxId, tokenId, ticket.tokenCount, txType.winner.id, ticket.walletAddress)
+              txCacheDAO.insert(ticketSpendTxId, tokenId, ticket.tokenCount, txType.winner.id, ticket.walletAddress, Configs.noTx)
             }
           })
           offset += 100
@@ -176,19 +176,15 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
     while (tickets != null && tickets.nonEmpty) {
       tickets.foreach(ticketBox => {
         val ticket = Ticket(ticketBox)
-        // Refund Tx
-        try txCacheDAO.refundByTxId(ticket.txId)
-        catch {
-          case _: Throwable => {
-            val spendTxId: String = ticketBox.hcursor.downField("spentTransactionId").as[String].getOrElse("")
-            if (spendTxId != "")
-              txCacheDAO.insert(spendTxId, tokenId, ticket.tokenCount, txType.refund.id, ticket.walletAddress)
-          }
-        }
+        val spendTxId: String = ticketBox.hcursor.downField("spentTransactionId").as[String].getOrElse(Configs.noTx)
         // Ticket Tx
-        try txCacheDAO.byTxId(ticket.txId)
+        try {
+          val txCache = txCacheDAO.byTxId(ticket.txId)
+          if(txCache.spendTx == Configs.noTx && spendTxId != Configs.noTx) txCacheDAO.updateSpendTx(txCache.id, spendTxId)
+        }
         catch {
-          case _: Throwable => txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, txType.ticket.id, ticket.walletAddress)
+          case _: Throwable =>
+            txCacheDAO.insert(ticket.txId, tokenId, ticket.tokenCount, txType.ticket.id, ticket.walletAddress, spendTxId)
         }
       })
       offset += 100

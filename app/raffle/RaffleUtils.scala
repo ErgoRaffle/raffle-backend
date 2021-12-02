@@ -29,7 +29,6 @@ object txType extends Enumeration{
   val winner: Value = Value(0, "winner")
   val charity: Value = Value(1, "charity")
   val ticket: Value = Value(2, "ticket")
-  val refund: Value = Value(3, "refund")
   val unknownType: Value = Value(4, "unknown")
 }
 
