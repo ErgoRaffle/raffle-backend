@@ -1,0 +1,22 @@
+# Routes
+# This file defines all application routes (Higher priority routes first)
+
+GET     /                                            controllers.HomeController.index
+GET     /api/info                                    controllers.HomeController.info
+GET     /api/raffle                                  controllers.HomeController.getRaffles(sorting: String ?= "activity", status: String ?= "all", offset: Int ?= 0, limit: Int ?= 100)
+GET     /api/raffle/:tokenId                         controllers.HomeController.getRafflesByTokenId(tokenId: String)
+POST    /api/raffle                                  controllers.HomeController.addRaffle
+GET     /api/raffle/:id/status                       controllers.HomeController.createReqStatus(id: Long)
+GET     /api/raffle/:tokenId/donate/:id/status       controllers.HomeController.donateReqStatus(tokenId: String, id: Long)
+POST    /api/raffle/:tokenId/donate                  controllers.HomeController.donateToId(tokenId: String)
+GET     /api/raffle/:tokenId/transaction             controllers.HomeController.raffleTransactions(tokenId: String, offset: Int ?= 0, limit: Int ?= 100)
+GET     /api/raffle/:tokenId/address/:add/donation   controllers.HomeController.getTickets(tokenId: String, add: String)
+GET     /api/wallet/:address/donation                controllers.HomeController.walletTickets(address: String, offset: Int ?= 0, limit: Int ?= 100)
+GET     /api/wallet/:address/win                     controllers.HomeController.walletWins(address: String, offset: Int ?= 0, limit: Int ?= 100)
+POST    /api/refund                                  controllers.HomeController.refundPayments()
+POST    /api/support                                 controllers.HomeController.support()
+POST    /api/contact                                 controllers.HomeController.contact()
+GET     /*file                                       controllers.HomeController.assetOrDefault(file)
+
+# Map static resources from the /public folder to the /assets URL path
+GET     /assets/*file                            controllers.Assets.versioned(path="/public", file: Asset)
