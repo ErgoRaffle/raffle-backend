@@ -20,7 +20,8 @@ object Configs extends ConfigHelper {
   lazy val serviceFeeAddress: Address = Address.create(readKey("service.feeAddress"))
 
   lazy val expireHeight: Long = readKey("expireHeight").toLong
-  lazy val creationDelay: Int = readKey("creationDelay").toInt
+  lazy val creationDelay: Int = readKey("creationDelayHeight").toInt
+  lazy val creationDelayTime: Int = readKey("creationDelayTime").toInt
   lazy val infBoxVal: Long = readKey("infBoxVal").toLong
 
   lazy val creationThreadInterval: Int = readKey("creationThreadInterval").toInt
