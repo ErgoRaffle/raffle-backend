@@ -3,7 +3,7 @@ import sbt.Keys.{libraryDependencies, resolvers}
 name := "ErgoRaffle"
 organization := "ErgoRaffle"
 
-version := "1.0.0-beta"
+version := "1.0.0"
 
 lazy val root = (project in file(".")).enablePlugins(PlayScala).settings(
   scalaVersion := "2.12.10",
