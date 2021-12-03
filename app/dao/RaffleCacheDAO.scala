@@ -32,7 +32,7 @@ trait RaffleCacheComponent {
     def redeemedTickets = column[Long]("REDEEM_TICKETS")
 
     def state = column[Int]("STATE")
-    def raffleToken = column[String]("RAFFLE_TOKEN")
+    def raffleToken = column[String]("RAFFLE_TOKEN", O.Unique)
     def creationTime = column[Long]("CREATION_TIME")
     def lastActivity = column[Long]("LAST_ACTIVITY")
     def isUpdating = column[Boolean]("IS_UPDATING")
