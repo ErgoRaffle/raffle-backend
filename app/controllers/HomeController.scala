@@ -4,8 +4,8 @@ import dao.{CreateReqDAO, DonateReqDAO, RaffleCacheDAO, TxCacheDAO}
 import helpers.{Configs, Utils, connectionException, internalException, noRaffleException}
 import io.circe.{Json, parser}
 import io.circe.generic.codec.DerivedAsObjectCodec.deriveCodec
-import network.{Client, Explorer}
-import raffle.{Addresses, CreateReqUtils, DonateReqUtils, RaffleUtils, raffleStatus, txType}
+import network.Client
+import raffle.{CreateReqUtils, DonateReqUtils, RaffleUtils, raffleStatus, txType}
 import raffle.raffleStatus._
 import play.api.Logger
 import play.api.libs.circe.Circe
@@ -184,7 +184,7 @@ class HomeController @Inject()(assets: Assets, donateReqUtils: DonateReqUtils, c
       val createResult = createReqUtils.CreateRaffleProxyAddress(walletAddr, charityPercent, name, description, deadlineHeight + client.getHeight, charityAddr, goal, ticketPrice, picLinks)
       val paymentAddress = createResult._1
       val requestId = createResult._2
-      val delay = Configs.creationDelay
+      val delay = Configs.creationDelayTime
 
       val result = Json.fromFields(List(
         ("deadline", Json.fromLong(delay)),
@@ -271,7 +271,7 @@ class HomeController @Inject()(assets: Assets, donateReqUtils: DonateReqUtils, c
       val paymentAddress = response._1
       val fee = response._2
       val requestId = response._3
-      val deadline = Configs.creationDelay
+      val deadline = Configs.creationDelayTime
 
       val result = Json.fromFields(List(
         ("deadline", Json.fromLong(deadline)),
