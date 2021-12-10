@@ -126,7 +126,7 @@ class Addresses @Inject()(client: Client, contract: RaffleContract){
       val constants = ConstantsBuilder.create()
         .item("userAddress", Address.create(pk).getErgoAddress.script.bytes)
         .item("minFee", Configs.fee)
-        .item("refundHeightThreshold", ctx.getHeight + Configs.expireHeight)
+        .item("refundHeightThreshold", ctx.getHeight + Configs.creationDelay)
         .item("charityCoef", charity)
         .item("ticketPrice", ticketPrice)
         .item("goal", goal)
@@ -154,7 +154,7 @@ class Addresses @Inject()(client: Client, contract: RaffleContract){
           .item("ticketCount", ticketCounts)
           .item("maxFee", Configs.fee)
           .item("raffleDeadline", raffleDeadline)
-          .item("refundHeightThreshold", ctx.getHeight + Configs.expireHeight)
+          .item("refundHeightThreshold", ctx.getHeight + Configs.creationDelay)
           .build(),
         contract.donateScript)
       Configs.addressEncoder.fromProposition(proxyContract.getErgoTree).get.toString
