@@ -60,21 +60,28 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
       while (items != null && items.nonEmpty) {
         items.foreach(box => {
           val raffle: Raffle = Raffle(box)
-          val address = box.hcursor.downField("address").as[String].getOrElse(throw parseException())
-          val state = raffleStateByAddress(address)
-          try {
-            val savedRaffle = raffleCacheDAO.byTokenId(raffle.tokenId)
-            raffleCacheDAO.acceptUpdating(savedRaffle.id)
-            updateRaffle(savedRaffle, box)
-            logger.debug(s"raffle with id ${raffle.tokenId} had been updated so far")
-          }
-          catch {
-            case _: Throwable =>
-              logger.debug("New raffle found with Token Id: " + raffle.tokenId)
-              val participants = raffleUtils.raffleParticipants(raffle.tokenId)
-              // TODO change the timestamp
-              val lastActivity: Long = box.hcursor.downField("settlementHeight").as[Long].getOrElse(throw parseException())
-              raffleCacheDAO.insert(raffle, participants, state, lastActivity, lastActivity)
+          if(Configs.exceptionList.contains(raffle.tokenId)){
+            try { raffleCacheDAO.deleteByTokenId(raffle.tokenId)}
+            catch {
+              case _: Throwable => logger.debug("Excepted raffle doesn't exist in database" + raffle.tokenId)
+            }
+          }else {
+            val address = box.hcursor.downField("address").as[String].getOrElse(throw parseException())
+            val state = raffleStateByAddress(address)
+            try {
+              val savedRaffle = raffleCacheDAO.byTokenId(raffle.tokenId)
+              raffleCacheDAO.acceptUpdating(savedRaffle.id)
+              updateRaffle(savedRaffle, box)
+              logger.debug(s"raffle with id ${raffle.tokenId} had been updated so far")
+            }
+            catch {
+              case _: Throwable =>
+                logger.debug("New raffle found with Token Id: " + raffle.tokenId)
+                val participants = raffleUtils.raffleParticipants(raffle.tokenId)
+                // TODO change the timestamp
+                val lastActivity: Long = box.hcursor.downField("settlementHeight").as[Long].getOrElse(throw parseException())
+                raffleCacheDAO.insert(raffle, participants, state, lastActivity, lastActivity)
+            }
           }
         })
         offset += 100
@@ -231,6 +238,7 @@ class RaffleCacheUtils @Inject()(client: Client, explorer: Explorer, utils: Util
 
       logger.info(s"Found ${raffleList.size} raffle boxes belonging to ${maxParticipation.size} number of raffles")
       raffleList.foreach(raffle => {
+        if(!Configs.exceptionList.contains(raffle.tokenId))
           if(!raffleIdList.contains(raffle.tokenId)) {
             logger.info("New raffle found with Token Id: " + raffle.tokenId)
             // TODO change the creationTime

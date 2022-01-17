@@ -133,6 +133,7 @@ class RaffleCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
    * @param id request id
    */
   def deleteById(id: Long): Future[Int] = db.run(raffles.filter(req => req.id === id).delete)
+  def deleteByTokenId(id: String): Future[Int] = db.run(raffles.filter(req => req.raffleToken === id).delete)
 
   def updateStateById(id: Long, state: Int): Future[Int] = {
     val q = for { c <- raffles if c.id === id } yield c.state

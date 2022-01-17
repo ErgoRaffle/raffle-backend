@@ -26,14 +26,10 @@ trait ConfigHelper {
     }
   }
 
-  def readNodes(): Seq[String] = {
+  def readSeq(key: String): Seq[String] = {
     try {
-      val key = "nodes"
-      if (config.has(key)) config.getOptional[Seq[String]](key).getOrElse(Seq()).map(ip => {
-        if (!ip.startsWith("http")) "http://" + ip
-        else ip
-      })
-      else throw config.reportError(key, s"${key} is required.")
+      if (config.has(key)) config.getOptional[Seq[String]](key).getOrElse(Seq())
+      else throw config.reportError(key, s"$key is required.")
     } catch {
       case ex: Throwable =>
         logger.error(ex.getMessage)
