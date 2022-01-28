@@ -17,8 +17,6 @@ import special.collection.Coll
 import org.ergoplatform.ErgoAddress
 import sigmastate.serialization.ErgoTreeSerializer
 import network.Request
-import play.api.Logger
-import play.api.libs.json._
 
 
 final case class InvalidRecaptchaException(private val message: String = "Invalid recaptcha") extends Throwable(message)
