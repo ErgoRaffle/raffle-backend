@@ -32,7 +32,7 @@ trait RaffleCacheComponent {
     def redeemedTickets = column[Long]("REDEEM_TICKETS")
 
     def state = column[Int]("STATE")
-    def raffleToken = column[String]("RAFFLE_TOKEN")
+    def raffleToken = column[String]("RAFFLE_TOKEN", O.Unique)
     def creationTime = column[Long]("CREATION_TIME")
     def lastActivity = column[Long]("LAST_ACTIVITY")
     def isUpdating = column[Boolean]("IS_UPDATING")
@@ -133,6 +133,7 @@ class RaffleCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigPro
    * @param id request id
    */
   def deleteById(id: Long): Future[Int] = db.run(raffles.filter(req => req.id === id).delete)
+  def deleteByTokenId(id: String): Future[Int] = db.run(raffles.filter(req => req.raffleToken === id).delete)
 
   def updateStateById(id: Long, state: Int): Future[Int] = {
     val q = for { c <- raffles if c.id === id } yield c.state

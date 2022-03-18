@@ -1,5 +1,7 @@
 package dao
 
+import helpers.Configs
+
 import javax.inject.{Inject, Singleton}
 import models.TxCache
 import play.api.db.slick.{DatabaseConfigProvider, HasDatabaseConfigProvider}
@@ -22,8 +24,10 @@ trait TxCacheComponent {
     def tokenCount = column[Long]("TOKEN_COUNT")
     def txType = column[Int]("TYPE")
     def walletAdd = column[String]("WALLET_ADD")
+    def spendTx = column[String]("SPEND_TX")
+
     def txToken = index("TX_TOKEN", (txId, tokenId), unique = true)
-    def * = (id, txId, tokenId, tokenCount, txType, walletAdd) <> (TxCache.tupled, TxCache.unapply)
+    def * = (id, txId, tokenId, tokenCount, txType, walletAdd, spendTx) <> (TxCache.tupled, TxCache.unapply)
   }
 
 }
@@ -41,9 +45,8 @@ class TxCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvide
    * inserts a request into db
    *
    */
-  def insert(txId: String, tokenId: String, tokenCount: Long, txType: Int,
-             wallerAdd: String): Future[Unit] ={
-    val action = Txs += TxCache(1, txId, tokenId, tokenCount, txType, wallerAdd)
+  def insert(txId: String, tokenId: String, tokenCount: Long, txType: Int, walletAdd: String, spendTx: String): Future[Unit] ={
+    val action = Txs += TxCache(1, txId, tokenId, tokenCount, txType, walletAdd, spendTx)
     db.run(action).map(_ => ())
   }
 
@@ -59,10 +62,9 @@ class TxCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvide
    */
   def byId(id: Long): TxCache = Await.result(db.run(Txs.filter(tx => tx.id === id).result.head), Duration.Inf)
 
-  def byTokenId(tokenId: String, offset: Int, limit: Int, raffleState: Int): (Seq[TxCache], Int) = {
+  def byTokenId(tokenId: String, offset: Int, limit: Int): (Seq[TxCache], Int) = {
     val q = for {
-      allTxQuery <- DBIO.successful(if (raffleState == succeed.id) Txs.filter(tx => tx.tokenId === tokenId).sortBy(_.txType.asc)
-                                    else Txs.filter(tx => tx.tokenId === tokenId && tx.txType === refund.id))
+      allTxQuery <- DBIO.successful(Txs.filter(tx => tx.tokenId === tokenId).sortBy(_.txType))
       lengthTotalResult <- allTxQuery.length.result
       limitTotalResult <- allTxQuery.drop(offset).take(limit).result
     }
@@ -70,17 +72,18 @@ class TxCacheDAO @Inject()(protected val dbConfigProvider: DatabaseConfigProvide
     Await.result(db.run(q), Duration.Inf)
   }
 
+  def updateSpendTx(id: Long, spendTx: String): Unit =
+    db.run(Txs.filter(_.id === id).map(tx => tx.spendTx).update(spendTx))
   /**
    * @param tokenId raffle token id
    * @return sum of refunded tickets belonging to the specified raffle
    */
   def refundedTickets(tokenId: String): Long ={
-    val q = Txs.filter(tx => tx.tokenId === tokenId && tx.txType === refund.id).map(_.tokenCount).sum.result
+    val q = Txs.filter(tx => tx.tokenId === tokenId && tx.spendTx =!= Configs.noTx).map(_.tokenCount).sum.result
     Await.result(db.run(q), Duration.Inf).getOrElse(0)
   }
 
   def byTxId(txId: String): TxCache = Await.result(db.run(Txs.filter(tx => tx.txId === txId).result.head), Duration.Inf)
-  def refundByTxId(txId: String): TxCache = Await.result(db.run(Txs.filter(tx => tx.txId === txId && tx.txType === refund.id).result.head), Duration.Inf)
 
   /**
    * @param tokenId raffle token id

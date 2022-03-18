@@ -33,9 +33,12 @@ object Configs extends ConfigHelper {
   lazy val recaptchaPubKey: String = readKey("recaptchaPubKey", default = "not-set")
 
   lazy val activeFinalize: Boolean = readKey("activeFinalize").toBoolean
+  lazy val noTx: String = "no-tx"
 
   lazy val contactWebHook: String = readKey("contactWebHook")
   lazy val supportUrl: String = readKey("supportUrl")
+
+  lazy val exceptionList: List[String] = readSeq("exceptionList").toList
 
   object token {
     lazy val nft: String = readKey("raffle.token.nft")
